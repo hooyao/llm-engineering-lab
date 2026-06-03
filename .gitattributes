@@ -1,0 +1,25 @@
+* text=auto
+
+# Shell scripts MUST stay LF — CRLF breaks them on Linux
+*.sh         text eol=lf
+*.bash       text eol=lf
+
+# Python prefers LF for cross-platform consistency
+*.py         text eol=lf
+
+# Markdown is portable either way; keep LF for git diff sanity
+*.md         text eol=lf
+
+# Misc text files
+*.yaml       text eol=lf
+*.yml        text eol=lf
+*.json       text eol=lf
+*.toml       text eol=lf
+
+# Binary-ish files
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.pdf        binary
+*.ipynb      binary

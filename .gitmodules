@@ -1,0 +1,3 @@
+[submodule "dgx-spark-playbooks"]
+	path = dgx-spark-playbooks
+	url = https://github.com/NVIDIA/dgx-spark-playbooks.git
