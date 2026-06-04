@@ -239,11 +239,16 @@ def main():
 
     total_gb = print_plan(assets)
 
-    # Free-space check.
+    # Free-space check (resumption-aware: subtract bytes already on disk, so a
+    # re-run after an interrupted download checks only what's left to fetch).
     args.output_dir.mkdir(parents=True, exist_ok=True)
     free_gb = shutil.disk_usage(args.output_dir).free / 1024**3
-    print(f"\nFree at {args.output_dir}: {free_gb:.1f} GB   (need ~{total_gb * 1.1:.0f} GB with 10% slack)")
-    if free_gb < total_gb * 1.1:
+    present_gb = sum(actual_size_gb(args.output_dir / a.repo_id) for a in assets)
+    need_gb = max(0.0, total_gb - present_gb)
+    print(f"\nFree at {args.output_dir}: {free_gb:.1f} GB   "
+          f"(plan {total_gb:.0f} GB; {present_gb:.0f} GB already on disk; "
+          f"need ~{need_gb * 1.1:.0f} GB more with 10% slack)")
+    if free_gb < need_gb * 1.1:
         print("  ! Not enough free space. Free up some, or use a different drive.")
         sys.exit(1)
 
