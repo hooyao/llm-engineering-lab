@@ -57,8 +57,16 @@ docker run --rm --gpus all \
     bash -c '
         set -e
         echo "[setup] installing transformers/peft/datasets/accelerate..."
+        # Pinned to avoid the torchao 0.14 (container) vs peft 0.18+ (requires
+        # torchao >= 0.16) collision. The 0.14 -> 0.16 jump in torchao itself
+        # requires torch >= 2.11, which the container does not ship. So we
+        # stay on peft 0.17 and transformers 4.54, the last combo that works
+        # against the container'\''s torchao 0.14.0+git.
         pip install -q --root-user-action=ignore \
-            transformers peft datasets accelerate
+            "transformers>=4.50,<4.55" \
+            "peft>=0.15,<0.18" \
+            "accelerate>=1.0,<1.5" \
+            "datasets>=3.0,<5.0"
         echo "[setup] done."
         python experiments/smoke-test/train_lora_3b.py
     ' 2>&1 | tee "$TRAIN_LOG"
