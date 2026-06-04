@@ -56,12 +56,9 @@ docker run --rm --gpus all \
     nvcr.io/nvidia/pytorch:25.11-py3 \
     bash -c '
         set -e
-        echo "[setup] installing transformers/peft/datasets/trl..."
-        pip install -q --no-deps \
-            transformers==4.46.3 \
-            peft==0.13.2 \
-            datasets==3.1.0 \
-            accelerate==1.1.1
+        echo "[setup] installing transformers/peft/datasets/accelerate..."
+        pip install -q --root-user-action=ignore \
+            transformers peft datasets accelerate
         echo "[setup] done."
         python experiments/smoke-test/train_lora_3b.py
     ' 2>&1 | tee "$TRAIN_LOG"
