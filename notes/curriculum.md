@@ -1,21 +1,11 @@
-# Curriculum — what's on the drive and what each piece teaches
+# Curriculum reference — assets, budgets, defaults
 
-The asset list itself is defined in `tools/download_models.py` (single source of truth).
-This file maps each downloaded model/dataset to the lesson it serves, the fine-tuning
-method, and a rough memory budget on the GX10.
+> **For the day-by-day execution plan see `curriculum-v2-execution.md`.**
+> This file is the static reference: what models/datasets are on disk, the memory
+> arithmetic, default LoRA config. Look here when a script needs a number.
 
-## Setup (once per session)
-
-Models synced from the portable drive land at `~/models/<org>/<model>` (see
-`bootstrap-gx10.md` Phase 3 for the rsync, Phase 7 for the container). Launch the
-training container, which bind-mounts them read-only at `/models`:
-
-```bash
-cd ~/fine-tuning
-bash tools/launch_pytorch.sh                 # mounts ~/models -> /models:ro
-## inside container — core stack:
-pip install -U transformers peft datasets trl accelerate
-```
+The asset list itself is defined in `tools/download_models.py` (single source of
+truth for what got downloaded).
 
 ## Memory budget — 128 GB unified LPDDR5x (shared CPU+GPU)
 
@@ -94,16 +84,9 @@ Verify, don't guess: `torch.cuda.memory._record_memory_history()` + snapshot, or
 
 ## Suggested sequence
 
-1. **Full SFT mechanics** — `Llama-3.2-1B` on `alpaca-cleaned` (smoke), then `Llama-3.2-3B`
-   on `smoltalk`. Profile memory; turn gradient checkpointing on/off and watch the delta.
-2. **LoRA** — `Qwen3-8B` on `tulu-3-sft-mixture`. Sweep rank/alpha/target modules; record
-   trainable-param % and adapter-checkpoint size. Repeat on `gemma-3-4b-it` for a cross-arch read.
-3. **QLoRA vs FP8** — `Qwen3-14B` NF4 (if bitsandbytes works on sm_121) against
-   `Qwen3-32B-FP8` on the native path. Compare peak memory and tokens/s.
-4. **MoE** — `Qwen3-30B-A3B-FP8`. Adapt attention only vs. including router/experts; note
-   3.3B active params (cheap compute) but the full 30B must stay resident.
-5. **DPO** — pipeline on `dpo-mix-7k`, then real run on `ultrafeedback_binarized` over a
-   `Qwen3-8B` SFT checkpoint.
+See `curriculum-v2-execution.md`. The catalog above is consumed by Track A
+(fine-tuning) and the MoE extension; Track B (pretrain from scratch) downloads
+its own data (TinyStories) at the time.
 
 ## LoRA target modules (reference)
 
