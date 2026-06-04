@@ -8,11 +8,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **Conversation language: 中文.** All replies to the user are written in Chinese. Keep technical terms in English (model names, API names, parameters, code symbols).
 3. **Code and doc language: English.** All code, comments, docstrings, READMEs, commit messages, and in-repo notes are written in English.
 
+## Where to Read State (do this first on a new session)
+
+On a fresh Claude session, **read `notes/progress.md` first**. Top of that file is a
+snapshot of what physically exists right now on the GX10 (IP, sudo pattern, software
+versions, model files on disk, performance numbers, dependency pin gotchas), and a
+list of open threads / next steps the user wants to pick up.
+
+Repo layout:
+
+```
+CLAUDE.md                                  ← this file: directives + hardware spec
+notes/
+  progress.md                              ← state snapshot + dated log (read first)
+  bootstrap-gx10.md                        ← first-boot procedure + every pitfall hit
+  hardware-gx10.md                         ← cited GB10 specs + this unit's measured perf
+  curriculum.md                            ← static asset catalog + memory-budget tables
+  curriculum-v2-execution.md               ← day-by-day learning plan (3 tracks)
+tools/
+  download_models.py                       ← office-side HF downloader
+  verify_models.py                         ← SHA256 integrity checker
+  launch_pytorch.sh                        ← standard `docker run ...` wrapper
+experiments/                               ← per-experiment subdirs (one per day in tracks)
+dgx-spark-playbooks/                       ← submodule → NVIDIA/dgx-spark-playbooks
+```
+
+The GX10 itself is reachable as `ssh hooyao@192.168.1.200` (password-less, but `sudo`
+still wants password `123` — see `notes/progress.md` snapshot for the askpass pattern).
+
+When something material happens (new experiment finished, new dependency learned, new
+hardware measurement), **append an entry to `notes/progress.md`'s LOG** and update the
+SNAPSHOT block if any facts changed. Don't let progress.md get stale.
+
 ## Repository Purpose
 
-Personal learning repository for mastering LLM fine-tuning end-to-end: full-parameter SFT, LoRA / QLoRA, PEFT adapters, DeepSpeed (ZeRO-1/2/3 + offload), FSDP, RLHF/DPO. Scope is mechanics and hardware-bound optimization, not application code.
+Personal learning repository for mastering LLM fine-tuning end-to-end: full-parameter SFT, LoRA / QLoRA, PEFT adapters, DeepSpeed (ZeRO-1/2/3 + offload), FSDP, RLHF/DPO. Also covers from-scratch pretraining of small models (TinyStories scale) and the full RLHF pipeline (RM + PPO + DPO) for educational purposes.
 
-The repository is currently empty. New work (scripts, configs, notebooks, notes) should be added under topic-named subdirectories (e.g. `lora/`, `qlora/`, `deepspeed/`, `profiling/`). Do not invent build/test commands — there is no build system yet.
+The day-by-day execution plan lives in `notes/curriculum-v2-execution.md`. Per-day work goes under `experiments/<track><day>-<slug>/` (e.g. `experiments/a01-mem-budget/`).
 
 ## Audience and Communication Conventions
 
