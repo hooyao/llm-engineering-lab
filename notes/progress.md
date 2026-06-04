@@ -7,7 +7,7 @@
 
 ---
 
-## STATE SNAPSHOT (last updated 2026-06-04)
+## STATE SNAPSHOT (last updated 2026-06-05)
 
 ### Hardware
 
@@ -40,7 +40,10 @@
 
 | Tag | Size | Purpose |
 |---|---|---|
-| `nvcr.io/nvidia/pytorch:25.11-py3` | 19.5 GB | training / inference; default container |
+| `nvcr.io/nvidia/pytorch:26.04-py3` | 23.5 GB | **default for new work** — CUDA 13.2, torch 2.12.0a0, torchao 0.17 |
+| `nvcr.io/nvidia/pytorch:25.11-py3` | 19.5 GB | older, kept for fallback / reproducibility — needs pinned deps |
+| `nvcr.io/nvidia/tensorrt:25.11-py3` | 10.6 GB | inference optimization (Track A10) |
+| `nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04` | 6.59 GB | full CUDA dev image (nvcc) for custom kernel work |
 | `nvcr.io/nvidia/cuda:13.0.1-base-ubuntu24.04` | 415 MB | minimal GPU sanity test |
 | `hello-world` | 5 KB | left over from docker smoke test, harmless |
 
@@ -95,8 +98,18 @@ saturate the GPU. To stress-test, use `experiments/bench/bf16_peak.py`.
 
 ### Stuck pinned dependency versions (the one PyTorch container gotcha)
 
-Inside `nvcr.io/nvidia/pytorch:25.11-py3`, the following combo works; anything
-newer collides with the container's `torchao 0.14.0+git` custom build:
+**Default container is now `nvcr.io/nvidia/pytorch:26.04-py3`.** It ships `torchao 0.17.0+git`,
+so modern peft / transformers install cleanly with no pins. Last verified 2026-06-05:
+
+```
+transformers 5.10.1  +  peft 0.19.1  +  datasets 4.8.4  +  accelerate 1.13.0
+```
+
+`experiments/smoke-test/run-26.04.sh` and `experiments/bench/run-26.04.sh` use this
+container with no pins.
+
+**Legacy: `nvcr.io/nvidia/pytorch:25.11-py3`.** Ships `torchao 0.14.0+git`, which
+collides with modern peft. Use these pins inside this container:
 
 ```
 transformers >= 4.50, < 4.55
@@ -105,8 +118,8 @@ accelerate   >= 1.0,  < 1.5
 datasets     >= 3.0,  < 5.0
 ```
 
-Already pinned in `experiments/smoke-test/run.sh`. Reuse for any new training script
-that needs these.
+Already pinned in `experiments/smoke-test/run.sh` and `experiments/bench/run.sh`.
+Keep these as fallback / reproducibility, but prefer the 26.04 variants for new work.
 
 ---
 
@@ -131,6 +144,56 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-05 — container refresh: 26.04 default, plus TensorRT + CUDA devel
+
+**Theme:** kill the dependency pin pain by upgrading the PyTorch container.
+
+Pulled three new images:
+
+- `nvcr.io/nvidia/pytorch:26.04-py3` (23.5 GB) — primary upgrade
+- `nvcr.io/nvidia/tensorrt:25.11-py3` (10.6 GB) — for Track A10 (vLLM / inference)
+- `nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04` (6.59 GB) — has nvcc for custom kernels
+
+Disk: 250G → 268G after pytorch:26.04, then to 272G after tensorrt, then 275G
+after cuda-devel. Total new ~25 GB on disk. Free space 594 GB.
+
+**26.04 vs 25.11 — the dependency story:**
+
+| | 25.11 (old) | 26.04 (new) |
+|---|---|---|
+| torch | 2.10.0a0 | 2.12.0a0 |
+| torchao | 0.14.0+git | **0.17.0+git** |
+| CUDA | 13.0 | 13.2 |
+| Modern peft (≥ 0.18) works? | NO (requires torchao ≥ 0.16) | YES |
+| Pins needed | yes, narrow ranges | none — install latest |
+
+The torchao 0.17 jump is what unblocks everything. peft 0.18+ asserts
+`torchao >= 0.16` on import; 25.11's torchao 0.14 fails the assertion.
+26.04's torchao 0.17 satisfies it, so installing latest transformers/peft/
+datasets/accelerate works clean.
+
+**Verification (5-step LoRA training inside 26.04):**
+
+- `transformers 5.10.1` + `peft 0.19.1` + `datasets 4.8.4` + `accelerate 1.13.0`
+- Loads Llama-3.2-3B-Instruct + LoRA r=16 in 45.3s, runs 5 steps in 5.5s
+  (0.91 steps/s, 3.64 samples/s)
+- Final loss 2.0767 (≈ identical to 25.11's 2.0566)
+- Peak GPU mem 18.13 GB (≈ identical to 25.11's 18.08 GB)
+- **Conclusion: 26.04 is a pure dep-resolution upgrade. Same hardware
+  throughput, same memory footprint, but no more pin maintenance.**
+
+**New scripts:**
+
+- `experiments/smoke-test/run-26.04.sh` — same as `run.sh` but 26.04 image + no pins
+- `experiments/bench/run-26.04.sh` — same as `run.sh` but 26.04 image
+
+**Original `run.sh` files unchanged** — 25.11 path stays bit-reproducible.
+
+**Recommendation for the curriculum going forward:** use the `-26.04.sh` variants
+unless you specifically need to reproduce older results.
+
+---
 
 ### 2026-06-04 — bootstrap day
 
