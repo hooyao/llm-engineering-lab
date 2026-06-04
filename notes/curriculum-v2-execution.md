@@ -31,6 +31,11 @@ Track layout in this file:
 - **Track B** — Pretraining from scratch + RLHF (this is the "write a small LLM" path)
 - **Track C** — Math refresh (focused on what shows up in Track A/B)
 
+> **PyTorch:** as a software engineer you don't need a PyTorch course. The
+> official 60-minute Blitz is enough as a one-time prereq before Track A starts;
+> Track B1 (Karpathy micrograd) and Track C6 (hand-derive backprop) make the
+> autograd internals concrete. See **Track A § A0** for the exact reading list.
+
 Each track:
 - Day-by-day plan with concrete deliverable
 - Single recommended resource per day (no rabbit holes)
@@ -57,6 +62,35 @@ exit
 
 If you haven't already, glance once at `notes/curriculum.md` § Memory budget — you'll
 keep referring to it.
+
+## A0 — PyTorch crash course (one-time, 2 hours, before A1)
+
+**Why this is short:** as a 10+ year software engineer, you don't need a multi-week
+PyTorch course. You need just enough to read training scripts without stumbling on
+API. The deep "how does it work" is solved on **Track C6** (hand-derive backprop)
+and **Track B1** (Karpathy micrograd) — neither is a PyTorch tutorial.
+
+**Do (skim, don't deep-dive):**
+
+- PyTorch Official "Deep Learning with PyTorch: A 60 Minute Blitz", sections 1-6:
+  https://pytorch.org/tutorials/beginner/deep_learning_60min_blitz.html
+  - § Tensors (30 min) — device, dtype, broadcasting, in-place ops
+  - § Autograd (30 min) — `requires_grad`, `.backward()`, computation graph
+  - § Neural Networks (30 min) — `nn.Module`, `forward()`, `parameters()`
+  - § Training loop convention — `optimizer.zero_grad()`, `loss.backward()`, `optimizer.step()`
+  - § DataLoader + Dataset basics
+- **Skip** the CV / Seq2Seq / TorchScript / Distributed sections. You'll meet
+  them only if you need them; not worth pre-reading.
+
+**Anti-recommendation:** do NOT take a LinkedIn Learning or Pluralsight PyTorch
+course. They run 8-15 hours and are typically 12-18 months stale. The official
+60-min Blitz + Karpathy + the HF docs you'll hit during Track A are the
+authoritative sources.
+
+**Deliverable:** none. Just be able to look at `experiments/smoke-test/train_lora_3b.py`
+and recognize every PyTorch primitive in it. If anything still looks alien after
+the Blitz, jot it in `notes/a00-pytorch-questions.md` and we'll cover it on the
+relevant day rather than upfront.
 
 ## A1 — Memory budget calculator (the only theory day in this track)
 
