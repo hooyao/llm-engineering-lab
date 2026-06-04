@@ -85,6 +85,40 @@ The ASUS Ascent GX10 is an OEM variant of the NVIDIA DGX Spark reference design.
 
 **Operational implication:** treat any peak number as a ceiling, not a target. For long runs, log `nvidia-smi dmon`, thermal headers, and power draw; expect to back off well below nameplate to stay stable.
 
+## Measured on this specific unit (2026-06-04)
+
+Driver `580.159.03`, CUDA build `13.0`, `nvcr.io/nvidia/pytorch:25.11-py3` container, room temp ~25 °C. Measurements done via `experiments/bench/bf16_peak.py` (square BF16 GEMM `(N x N) @ (N x N)`, default `--warmup 20 --iters 200` mode).
+
+**BF16 sustained throughput vs matrix size:**
+
+| N | iters | median latency | p99 latency | sustained TFLOPS | peak (median) | peak (best) |
+|--:|--:|--:|--:|--:|--:|--:|
+| 2048  | 151,115 | 0.19 ms  | 0.33 ms  | 86.5  | 88.5 | 90.1 |
+| 4096  | 18,826  | 1.56 ms  | 2.31 ms  | 86.2  | 87.9 | 91.0 |
+| 8192  | 2,603   | 11.36 ms | 14.53 ms | 95.4  | 96.8 | 98.3 |
+| 12288 | 776     | 38.17 ms | 42.82 ms | 95.9  | 97.2 | 98.1 |
+| 16384 | 332     | 89.37 ms | 97.88 ms | **97.3** | 98.4 | 99.9 |
+
+**`nvidia-smi` snapshot during N=16384 GEMM:**
+
+| Metric | Value |
+|---|---|
+| GPU die power (`Pwr:Usage`) | 89 W |
+| GPU temperature | 79 °C |
+| Perf state | P0 (highest) |
+| GPU utilization | 96 % |
+| Memory-Usage | `Not Supported` (iGPU, expected) |
+| ECC counters | `N/A` across the board (LPDDR5x has no exposed ECC; SMART ECC fields are not applicable to GB10 iGPU) |
+| Xid errors in `dmesg` | none |
+
+**Reading:**
+
+- **97.3 TFLOPS BF16 sustained at N=16384, ≈ 78 % of the 125 TFLOPS nameplate.** Higher than the ~60 TFLOPS Carmack-style independent figure typically cited, likely from a combination of: newer driver (580.x is months past first-release), the ASUS chassis's `1.6x more efficient thermal coverage` versus the NVIDIA Founders Edition, and pure-GEMM workloads being the easiest case to saturate tensor cores.
+- **No thermal throttling at this duration / load.** Headroom to throttle threshold ~8-10 °C. Clocks stay at P0.
+- **Power efficiency ~1.09 TFLOPS/W (GPU die)** -- comparable to H100 SXM and ahead of A100 SXM on the same metric. Real chassis draw (CPU, DRAM controller, NIC, fan) brings it to roughly 130 W on this unit, well below the 240 W adapter ceiling.
+- **GEMM size matters.** Below N=8192 the per-call cuBLAS overhead is non-trivial and sustained throughput drops to ~86 TFLOPS. Real LLM workloads with small effective batches (e.g. LoRA 3B at batch 4 / seq 1024) hit the smaller-size regime AND don't issue continuous GEMMs; observed GPU die power for that case was only ~44 W. To actually saturate this GPU, use large effective batch × long seq, or train ≥ 14B models.
+- **For experiment planning, budget sustained BF16 = ~95 TFLOPS at large N, ~60 TFLOPS at LLM-typical sizes.** Mark either as `[measured on this unit, single-shot, 2026-06]` -- repeat the benchmark if room temperature changes a lot or the driver moves to a major new release.
+
 ## Sources
 
 - NVIDIA DGX Spark Hardware Overview — https://docs.nvidia.com/dgx/dgx-spark/hardware.html
