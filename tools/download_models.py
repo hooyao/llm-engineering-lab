@@ -8,7 +8,7 @@ then physically transport home and rsync into the GX10's cache.
 Output layout (clean, portable, no HF cache symlink dance):
     <output_dir>/
       meta-llama/Llama-3.2-3B-Instruct/
-      Qwen/Qwen2.5-32B-Instruct/
+      Qwen/Qwen3-32B/
       ...
       yahma/alpaca-cleaned/         (dataset)
 
@@ -27,8 +27,9 @@ Resume:
     snapshot_download is resumable file-by-file. Re-run the same command after
     a network failure; finished files are skipped.
 
-Gated models (Llama 3.x, Mistral): accept license at huggingface.co/<repo_id>
-under the same HF account whose token you logged in with.
+Gated models (Llama 3.x, Gemma 3): accept license at huggingface.co/<repo_id>
+under the same HF account whose token you logged in with. Qwen3 is Apache 2.0
+(no gate). Total download budget is kept under ~220 GB to fit a 250 GB drive.
 """
 
 import argparse
@@ -56,41 +57,71 @@ class Asset:
     note: str = ""
 
 
-# Curriculum, weeks 1-2.
-#   Tier 1: small/medium models for full SFT + first LoRA experiments.
-#   Tier 2: mid/large models for LoRA at scale + QLoRA.
-# Model size assumes BF16 (params x 2 bytes). QLoRA loads BF16 weights and
-# quantizes to NF4 in memory via bitsandbytes; no separate quantized download.
+# Curriculum (expanded), kept ~180 GB to fit a portable drive with room to spare.
+#   Tier 1: small models (<=8B) for full SFT + first LoRA, across 3 architectures.
+#   Tier 2: mid models (12-14B) for BF16 LoRA at scale (+ NF4 QLoRA if bnb works).
+#   Tier 3: large dense + MoE in FP8 -- Blackwell (sm_121) native low-precision path.
+# Model sizes are measured BF16/FP8 safetensors totals (HfApi); only safetensors
+# are pulled (legacy *.bin ignored below), so on-disk size ~= the number quoted.
+# NOTE on QLoRA: the classic path loads BF16 weights and quantizes to NF4 via
+# bitsandbytes. On Blackwell (GB10, sm_121) the native low-precision path is
+# NVFP4 / FP8, NOT NF4 -- verify bitsandbytes ships a working aarch64 + sm_121
+# wheel before relying on NF4. Tier 3 ships the FP8 checkpoints so you can train
+# on the native path regardless. [bitsandbytes/sm_121 status unverified on this unit.]
 ASSETS = [
-    # ---------------- Tier 1 (week 1) ----------------
-    Asset("meta-llama/Llama-3.2-1B-Instruct", "model", 2.5, 1, gated=True,
-          note="Smallest; full SFT smoke test in minutes."),
-    Asset("meta-llama/Llama-3.2-3B-Instruct", "model", 6.0, 1, gated=True,
+    # ---------------- Tier 1: full SFT + first LoRA (<=8B, 3 architectures) ----------------
+    # Sizes are measured BF16 safetensors totals (HfApi files_metadata), rounded up.
+    # -- Llama 3.x (GQA + RoPE; gated) --
+    Asset("meta-llama/Llama-3.2-1B-Instruct", "model", 2.4, 1, gated=True,
+          note="Smallest; full SFT smoke test in minutes. Highest tunability."),
+    Asset("meta-llama/Llama-3.2-3B-Instruct", "model", 6.1, 1, gated=True,
           note="Full SFT comfortable on single GB10."),
-    Asset("meta-llama/Llama-3.1-8B-Instruct", "model", 16.0, 1, gated=True,
-          note="Week 1 main target: serious full SFT."),
-    Asset("Qwen/Qwen2.5-7B-Instruct", "model", 15.0, 1,
-          note="Alternative architecture (RoPE + QKV bias), no gate."),
-    Asset("mistralai/Mistral-7B-Instruct-v0.3", "model", 14.0, 1, gated=True,
-          note="Third arch: sliding-window attention."),
+    Asset("meta-llama/Llama-3.1-8B-Instruct", "model", 15.1, 1, gated=True,
+          note="Llama-arch main SFT target."),
+    # -- Qwen3 (Apache 2.0, hybrid think/non-think; Apr 2025, supersedes Qwen2.5) --
+    Asset("Qwen/Qwen3-1.7B", "model", 3.9, 1,
+          note="Tiny Qwen3; fast LoRA iteration, no gate."),
+    Asset("Qwen/Qwen3-4B-Instruct-2507", "model", 7.6, 1,
+          note="2507 instruct refresh; #2 fine-tune base in 2026 benchmarks."),
+    Asset("Qwen/Qwen3-8B", "model", 15.4, 1,
+          note="#1 fine-tune base in 2026 benchmarks; replaces Qwen2.5-7B."),
+    # -- Gemma 3 (third architecture; gated by Google) --
+    Asset("google/gemma-3-4b-it", "model", 8.1, 1, gated=True,
+          note="Third arch (bundles a vision tower). Cross-arch LoRA comparison."),
 
-    # ---------------- Tier 2 (week 2) ----------------
-    Asset("Qwen/Qwen2.5-14B-Instruct", "model", 28.0, 2,
-          note="LoRA target: BF16 forward + LoRA grads fit."),
-    Asset("Qwen/Qwen2.5-32B-Instruct", "model", 64.0, 2,
-          note="QLoRA target: 64 GB BF16 -> ~16 GB NF4 in memory."),
+    # ---------------- Tier 2: BF16 LoRA at scale (mid dense) ----------------
+    Asset("Qwen/Qwen3-14B", "model", 27.6, 2,
+          note="BF16 LoRA sweet spot; also the NF4-QLoRA target if bnb works on sm_121."),
+    Asset("google/gemma-3-12b-it", "model", 22.8, 2, gated=True,
+          note="Non-Qwen 12B LoRA target; arch diversity at scale."),
 
-    # ---------------- Datasets (all small, useful across weeks) ----------------
+    # ---------------- Tier 3: Blackwell native FP8 path (large dense + MoE) ----------------
+    Asset("Qwen/Qwen3-32B-FP8", "model", 32.0, 3,
+          note="Large dense in FP8 (native sm_121 path); no bitsandbytes needed."),
+    Asset("Qwen/Qwen3-30B-A3B-FP8", "model", 30.2, 3,
+          note="MoE 30B total / 3B active, FP8; learn MoE fine-tuning."),
+
+    # ---------------- Datasets: SFT (Tier 1) ----------------
     Asset("yahma/alpaca-cleaned", "dataset", 0.05, 1,
-          note="52k instructions, classic SFT baseline."),
-    Asset("HuggingFaceH4/ultrachat_200k", "dataset", 1.0, 1,
-          note="~200k high-quality multi-turn conversations."),
-    Asset("BelleGroup/train_0.5M_CN", "dataset", 1.0, 1,
-          note="Chinese instruction tuning, 500k samples."),
+          note="52k instructions; classic SFT baseline / smoke test."),
     Asset("databricks/databricks-dolly-15k", "dataset", 0.01, 1,
           note="15k human-written instruction-response pairs."),
+    Asset("HuggingFaceTB/smoltalk", "dataset", 4.0, 1,
+          note="Current-standard SFT mix (SmolLM); all configs on main."),
+    Asset("allenai/tulu-3-sft-mixture", "dataset", 1.4, 1,
+          note="939k high-quality SFT pairs across 7 domains (Tulu 3)."),
+    Asset("BelleGroup/train_0.5M_CN", "dataset", 0.4, 1,
+          note="Chinese instruction tuning, 500k samples."),
+    Asset("HuggingFaceH4/ultrachat_200k", "dataset", 1.6, 1,
+          note="2023 Zephyr SFT set; kept for A/B vs smoltalk/tulu-3."),
+
+    # ---------------- Datasets: preference / DPO (Tier 2) ----------------
+    Asset("HuggingFaceH4/ultrafeedback_binarized", "dataset", 0.7, 2,
+          note="DPO reference standard (~63k binarized pairs)."),
     Asset("argilla/dpo-mix-7k", "dataset", 0.005, 2,
-          note="DPO preference pairs, for later weeks."),
+          note="Tiny DPO starter (7k); pipeline smoke test."),
+    Asset("nvidia/HelpSteer2", "dataset", 0.4, 2,
+          note="NVIDIA preference data (helpfulness/correctness attributes)."),
 ]
 
 
@@ -100,6 +131,8 @@ IGNORE_PATTERNS = [
     "*.h5",             # TF / Keras weights
     "*.tflite",         # TFLite
     "*.onnx",           # ONNX export
+    "*.gguf",           # llama.cpp quantized duplicates (some Gemma/Qwen repos)
+    "*.task",           # MediaPipe bundles (Gemma)
     "original/*",       # Llama 3.x ships duplicate .pth + tokenizer.model under original/
     "*.bin",            # legacy pytorch_model*.bin when safetensors exists (re-run without this flag if a model only has .bin)
     "consolidated*.pt", # raw checkpoint duplicates
@@ -177,8 +210,8 @@ def main():
     )
     ap.add_argument("--output-dir", required=True, type=Path,
                     help="Root directory. e.g. E:/hf-cache (Windows) or /mnt/drive/hf-cache (Linux)")
-    ap.add_argument("--tier", type=int, choices=[1, 2],
-                    help="Download only tier 1 (week 1) or tier 2 (week 2). Default: both.")
+    ap.add_argument("--tier", type=int, choices=[1, 2, 3],
+                    help="Download only tier 1, 2, or 3. Default: all tiers.")
     ap.add_argument("--only", type=str,
                     help="Comma-separated repo IDs to download (overrides --tier).")
     ap.add_argument("--dry-run", action="store_true",
@@ -270,23 +303,26 @@ NEXT STEPS
 
 2. Unplug drive. At home, plug into GX10 (USB-C) or into your laptop.
 
-3. Copy to GX10. Two options:
+3. Copy to GX10. Models live in the hf-cache/ subdir (the drive root may hold
+   unrelated files), so sync THAT subdir, not the drive root:
 
-   a) Drive plugged into GX10 directly (mount appears under /media/hooyao/...):
-        rsync -avP /media/hooyao/<DRIVE>/  /home/hooyao/models/
+   a) Drive plugged into GX10 directly (mount under /media/hooyao/<LABEL>/):
+        rsync -avP /media/hooyao/<LABEL>/hf-cache/  /home/hooyao/models/
 
-   b) Drive on Windows laptop, push over LAN:
-        scp -r /e/hf-cache/  hooyao@192.168.1.200:/home/hooyao/models/
-      or rsync via WSL / Git Bash:
-        rsync -avP /e/hf-cache/  hooyao@192.168.1.200:/home/hooyao/models/
+   b) Drive on Windows laptop, push over LAN (Git Bash; G: -> /g):
+        rsync -avP /g/hf-cache/  hooyao@192.168.1.200:/home/hooyao/models/
+
+   Result layout: /home/hooyao/models/<org>/<model>, e.g. .../Qwen/Qwen3-8B.
 
 4. In your PyTorch training script, load by direct path:
      model = AutoModelForCausalLM.from_pretrained(
-         "/home/hooyao/models/meta-llama/Llama-3.2-3B-Instruct",
+         "/home/hooyao/models/Qwen/Qwen3-8B",        # primary fine-tune base (BF16)
          torch_dtype=torch.bfloat16,
      )
+     # Tier-3 FP8 (native Blackwell path, no bitsandbytes/NF4):
+     #   "/home/hooyao/models/Qwen/Qwen3-32B-FP8"
      dataset = load_dataset(
-         "/home/hooyao/models/yahma/alpaca-cleaned",
+         "/home/hooyao/models/yahma/alpaca-cleaned", # smoke test; smoltalk/tulu-3 for real SFT
      )
 
 5. Inside the Docker container, bind-mount the directory:

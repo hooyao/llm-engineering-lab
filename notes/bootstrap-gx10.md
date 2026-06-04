@@ -304,20 +304,29 @@ ssh gx10 'cd fine-tuning && bash tools/launch_pytorch.sh python train.py ...'
 
 ## Phase 7 — First real training
 
-Once Phase 5 + Phase 6 are done and you have models on disk (see `tools/download_models.py`):
+Once Phase 5 + Phase 6 are done and you have models on disk (see `tools/download_models.py`
+for the full tier 1-3 set: Llama 3.x / Qwen3 / Gemma 3 dense, plus Qwen3-32B FP8 + Qwen3-30B-A3B MoE;
+`notes/curriculum.md` maps each model/dataset to its lesson, method, and memory budget):
 
 ```bash
 ssh gx10
 cd ~/fine-tuning
 bash tools/launch_pytorch.sh
-## inside container:
-pip install transformers peft datasets trl bitsandbytes
+## inside container — core stack (always needed):
+pip install -U transformers peft datasets trl accelerate
+## NF4 QLoRA path (Tier-2 dense) needs bitsandbytes with an aarch64 + sm_121 wheel,
+## which is UNVERIFIED on this unit. Tier-3 ships FP8 checkpoints so you can train on
+## the native Blackwell path (Transformer Engine) with no bitsandbytes at all.
+# pip install bitsandbytes   # try it; if it has no sm_121 build, use the FP8 models instead
+
+## smoke test: load the primary fine-tune base
 python -c "from transformers import AutoModelForCausalLM; \
-  m = AutoModelForCausalLM.from_pretrained('/models/meta-llama/Llama-3.2-3B-Instruct'); \
+  m = AutoModelForCausalLM.from_pretrained('/models/Qwen/Qwen3-8B'); \
   print(sum(p.numel() for p in m.parameters()))"
 ```
 
-If that prints ~3.2e9 you're done. Move on to actual training scripts.
+If that prints ~8.2e9 you're done. (Quick gated-model check: swap in
+`/models/meta-llama/Llama-3.2-3B-Instruct` → ~3.2e9.) Move on to actual training scripts.
 
 ---
 
@@ -339,4 +348,4 @@ If `docker ps` fails, see Pitfall D in Phase 3 (BuildKit corruption).
 - Multi-Spark Docker Swarm setup (second box): see `dgx-spark-playbooks/nvidia/pytorch-fine-tune/README.md` "Run on two Sparks" and `connect-two-sparks/`.
 - Memory-budget arithmetic for picking batch size: separate `notes/memory-budget.md` once we have a real script to compute it.
 - DeepSpeed / FSDP configs: separate notes per topic.
-- HF model download script for office-network bulk download: `tools/download_models.py` (covers weeks 1-2 of the curriculum).
+- HF model download script for office-network bulk download: `tools/download_models.py` (tier 1-3: Llama 3.x / Qwen3 / Gemma 3 dense, Qwen3 FP8 + MoE, and the SFT/DPO datasets).
