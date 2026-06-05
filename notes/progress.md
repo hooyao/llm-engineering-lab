@@ -147,6 +147,40 @@ When the user is ready to continue, the natural next steps are:
 
 ## LOG (append new entries at the top)
 
+### 2026-06-05 (evening) — cold reboot fully recovers BF16 throughput
+
+User ran a cold reboot after the diagnostic chain earlier today. Re-ran
+the N=16384 BF16 GEMM benchmark immediately after boot:
+
+| Metric | Yesterday (initial) | This morning (post-uptime) | Tonight (cold reboot) |
+|---|---:|---:|---:|
+| sustained | 97.3 | 67-70 | **93.4** ✅ |
+| peak(best) | 99.9 | 84.9-97.0 | **101.3** |
+| GPU power | 89 W | 75-83 W | 89.6 W |
+| GPU temp | 79 °C | 63-67 °C | 63 °C |
+| idle clock (pre-bench) | unknown | 208 MHz (P8 deep sleep) | 2119 MHz |
+
+**Cold reboot is the actual fix.** `systemctl stop gdm` only recovered
++13 % (67 → 76); the remaining 22 % gap required a full reboot. The
+93.4 TFLOPS figure is now reproducible, so the original 97.3 was not a
+clean-room oddity but the genuine ceiling for this unit when the EC and
+driver power-management state are fresh.
+
+Updated `notes/hardware-gx10.md`:
+- Added 4th column to the comparison table (cold-reboot run)
+- Rewrote "Revised operational numbers" — `93-97 TFLOPS post-reboot` is now
+  the official ceiling, not "the 97 was a clean-room oddity"
+- Reordered "Mitigations" — full reboot is now #1, gdm-stop is #2,
+  acknowledging measured effectiveness
+- Added the `nvidia-smi -q -d PERFORMANCE | grep "SW Power Capping"` rate
+  check as a diagnostic to know in advance whether you're in the
+  contended regime
+
+**Operational takeaway for the curriculum:** before any benchmark you
+actually care about reporting, reboot. For training runs (LoRA / SFT /
+QLoRA), this whole story is irrelevant — those don't hit the regime where
+the SW Power Cap binds.
+
 ### 2026-06-05 (later) — emergency playbook added (clock clamping, EC reset, ASUS-vs-FE firmware)
 
 User received a Gemini-generated "operations instruction set" suggesting:

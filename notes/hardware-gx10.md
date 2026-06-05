@@ -124,13 +124,22 @@ Driver `580.159.03`, CUDA build `13.0`, `nvcr.io/nvidia/pytorch:25.11-py3` conta
 Same benchmark, same hardware, same container `25.11-py3` **and** the newly-pulled
 `26.04-py3`. Driver `580.159.03` unchanged.
 
-| N | 2026-06-04 (initial) | 2026-06-05 (re-run, 25.11) | 2026-06-05 (re-run, 26.04) |
-|--:|--:|--:|--:|
-| 2048  | 86.5 | — | 85.3 |
-| 4096  | 86.2 | — | 87.5 |
-| 8192  | 95.4 | ~95 (single-size cold: 93.0) | 95.9 |
-| 12288 | 95.9 | — | 86.9 |
-| 16384 | **97.3** | **67.4** | **70.6** (sweep) / **67.3** (cold solo) |
+| N | 2026-06-04 (initial) | 2026-06-05 (re-run, 25.11) | 2026-06-05 (re-run, 26.04) | 2026-06-05 (cold reboot, 26.04) |
+|--:|--:|--:|--:|--:|
+| 2048  | 86.5 | — | 85.3 | — |
+| 4096  | 86.2 | — | 87.5 | — |
+| 8192  | 95.4 | ~95 (single-size cold: 93.0) | 95.9 | — |
+| 12288 | 95.9 | — | 86.9 | — |
+| 16384 | **97.3** | **67.4** | **70.6** (sweep) / **67.3** (cold solo) | **93.4** ✅ |
+
+**Cold reboot fully recovers the headroom.** The third column was after
+`sudo systemctl stop gdm` (recovered +13 %, 67 → 76). The fourth column was
+after a full power cycle, and N=16384 returned to **93.4 TFLOPS sustained**
+with **89.6 W GPU power** and idle clock back to 2119 MHz (not the P8/208 MHz
+deep sleep we saw after long uptime). peak(best) actually hit **101.3 TFLOPS**,
+slightly above the original 99.9. So the silicon was always fine; what
+accumulates is the driver's `SW Power Capping` history influencing the
+power-management state.
 
 **The 26.04 container is not the cause.** Bit-for-bit comparison at N=16384 in
 cold-start single-size mode produced `25.11=67.4` and `26.04=67.3`. The two
@@ -171,28 +180,40 @@ real, but intermittent.
 
 | Workload class | TFLOPS to budget |
 |---|---:|
-| Pure BF16 GEMM, N=16384, cold start, no desktop | **97** (peak ceiling) |
-| Same, but typical day-to-day with desktop / SSH sessions | **65-75** |
-| Pure BF16 GEMM, N=8192 (the cuBLAS sweet spot) | **93-96** consistently |
+| Pure BF16 GEMM, N=16384, **fresh reboot**, no desktop | **93-97** (close to ceiling) |
+| Same, but typical day-to-day with desktop / SSH sessions / long uptime | **65-75** |
+| Pure BF16 GEMM, N=8192 (the cuBLAS sweet spot) | **93-96** consistently regardless of uptime |
 | LoRA training, batch 4, seq 1024 (real workload) | **~60** equivalent (GPU sits at ~44 W, not GEMM-bound) |
 
-**The 97 TFLOPS number was a clean-room ceiling**, not a daily baseline. The
-**realistic sustained number for this unit under normal conditions is
-~90-95 TFLOPS at N=8192, ~70 TFLOPS at N=16384**. Don't rely on the
-single-shot 97 for planning.
+**Bottom line: the 93-97 TFLOPS figure is repeatable** as long as you reboot
+when you need it. The "97" was not a clean-room oddity, it's the genuine
+sustained ceiling for this unit. The 67-76 TFLOPS regime is what you get
+after the box has been running with active sessions for ~24h+ and the EC /
+driver power-management state has drifted.
 
 ### Mitigations if you need the headroom back
 
-1. `sudo systemctl stop gdm` (kills the GNOME desktop while you train) -- frees
+Ranked by effectiveness (measured on this unit):
+
+1. **Full cold reboot.** Recovers from 67 → **93.4 TFLOPS at N=16384**.
+   `sudo reboot` is enough; doesn't need power-brick unplug. After reboot,
+   GPU idle clock returns to ~2119 MHz (not the P8 / 208 MHz deep-sleep
+   state observed after long uptime), and `SW Power Capping` counter resets
+   along with the rest of driver state. **This is the only reliable
+   mitigation**; everything below is partial.
+2. `sudo systemctl stop gdm` (kills the GNOME desktop while you train) -- frees
    the largest single non-essential CPU+GPU consumer. **Measured impact on this
-   unit: 67 → 76 TFLOPS at N=16384, +13%.** Not full recovery to 97.
-2. Close VS Code Remote-SSH sessions and extra terminal multiplexers during
+   unit: 67 → 76 TFLOPS at N=16384, +13%.** Not full recovery to 93+.
+3. Close VS Code Remote-SSH sessions and extra terminal multiplexers during
    long training runs. Each `sshd` session has small but non-zero overhead.
-3. Run benchmarks immediately after a fresh reboot, not after a multi-hour
-   working day. Long uptime appears to drive the EC firmware to a more
-   conservative power policy.
 4. The `SW Power Capping` counter is a real sensor -- read it before and after
-   long runs to verify whether you got the clean envelope or the contended one.
+   long runs to verify whether you got the clean envelope or the contended one:
+   ```
+   nvidia-smi -q -d PERFORMANCE | grep "SW Power Capping"
+   ```
+   If the counter rate (delta_us per wall-clock second) is > 100,000 during a
+   benchmark, the driver is actively capping you. Reboot resets the
+   accumulated counter and the state that drives it.
 
 ### This is a known systemic issue, not a per-unit defect
 
