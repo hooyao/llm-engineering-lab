@@ -119,6 +119,79 @@ Driver `580.159.03`, CUDA build `13.0`, `nvcr.io/nvidia/pytorch:25.11-py3` conta
 - **GEMM size matters.** Below N=8192 the per-call cuBLAS overhead is non-trivial and sustained throughput drops to ~86 TFLOPS. Real LLM workloads with small effective batches (e.g. LoRA 3B at batch 4 / seq 1024) hit the smaller-size regime AND don't issue continuous GEMMs; observed GPU die power for that case was only ~44 W. To actually saturate this GPU, use large effective batch × long seq, or train ≥ 14B models.
 - **For experiment planning, budget sustained BF16 = ~95 TFLOPS at large N, ~60 TFLOPS at LLM-typical sizes.** Mark either as `[measured on this unit, single-shot, 2026-06]` -- repeat the benchmark if room temperature changes a lot or the driver moves to a major new release.
 
+## Re-measurement on 2026-06-05 (after ~33h uptime, with desktop session active)
+
+Same benchmark, same hardware, same container `25.11-py3` **and** the newly-pulled
+`26.04-py3`. Driver `580.159.03` unchanged.
+
+| N | 2026-06-04 (initial) | 2026-06-05 (re-run, 25.11) | 2026-06-05 (re-run, 26.04) |
+|--:|--:|--:|--:|
+| 2048  | 86.5 | — | 85.3 |
+| 4096  | 86.2 | — | 87.5 |
+| 8192  | 95.4 | ~95 (single-size cold: 93.0) | 95.9 |
+| 12288 | 95.9 | — | 86.9 |
+| 16384 | **97.3** | **67.4** | **70.6** (sweep) / **67.3** (cold solo) |
+
+**The 26.04 container is not the cause.** Bit-for-bit comparison at N=16384 in
+cold-start single-size mode produced `25.11=67.4` and `26.04=67.3`. The two
+containers are within noise; whatever changed, changed at the host level.
+
+### Root cause: SW Power Cap (NVIDIA driver-side power management)
+
+`nvidia-smi -q -d PERFORMANCE` shows accumulating `SW Power Capping` counters:
+
+```
+Clocks Event Reasons Counters
+    SW Power Capping  :  33921903067 us   ← ~9.4 hours over 33h uptime
+    HW Thermal Slowdown :  0 us
+    HW Power Braking    :  0 us
+```
+
+The GPU is not thermally throttled (HW Thermal Slowdown stays at 0) and is not
+hitting the silicon's hard power brake. It is the *driver* actively capping
+clocks to keep the SoC inside an envelope. Measured during a benchmark, the
+`SW Power Capping` counter advanced ~3 seconds per 30 seconds of sampling --
+real, but intermittent.
+
+### What changed since 2026-06-04
+
+- **Desktop session is now active**: 6 sshd processes, GNOME shell, dashboard
+  service, a `node` server, VS Code remote (`code-f6cfa2ea24`) all running.
+  CPU at 0.30 load average, none individually significant, **but** GB10's
+  140 W SoC TDP is shared between CPU, GPU, and the LPDDR5x memory controller.
+  Whenever the CPU side spikes (e.g. snap auto-refresh, dashboard polling),
+  the driver gives the GPU less to keep within envelope.
+- **LPDDR5x bandwidth contention**: at N=16384 each matmul reads/writes ~1.6 GB.
+  The LPDDR5x 273 GB/s is shared CPU↔GPU; any background memory traffic
+  (GNOME compositor, IDE indexing, telemetry daemons) steals bandwidth that
+  the GEMM needs to be compute-bound. Smaller GEMMs (N≤8192) fit better in
+  L2 cache and don't show this regression.
+
+### Revised operational numbers
+
+| Workload class | TFLOPS to budget |
+|---|---:|
+| Pure BF16 GEMM, N=16384, cold start, no desktop | **97** (peak ceiling) |
+| Same, but typical day-to-day with desktop / SSH sessions | **65-75** |
+| Pure BF16 GEMM, N=8192 (the cuBLAS sweet spot) | **93-96** consistently |
+| LoRA training, batch 4, seq 1024 (real workload) | **~60** equivalent (GPU sits at ~44 W, not GEMM-bound) |
+
+**The 97 TFLOPS number was a clean-room ceiling**, not a daily baseline. The
+**realistic sustained number for this unit under normal conditions is
+~90-95 TFLOPS at N=8192, ~70 TFLOPS at N=16384**. Don't rely on the
+single-shot 97 for planning.
+
+### Mitigations if you need the headroom back
+
+1. `sudo systemctl stop gdm` (kills the GNOME desktop while you train) -- frees
+   the largest single non-essential CPU+GPU consumer
+2. Close VS Code Remote-SSH sessions and extra terminal multiplexers during
+   long training runs
+3. Run benchmarks immediately after a fresh reboot, not after a multi-hour
+   working day
+4. The `SW Power Capping` counter is a real sensor -- read it before and after
+   long runs to verify whether you got the clean envelope or the contended one
+
 ## Sources
 
 - NVIDIA DGX Spark Hardware Overview — https://docs.nvidia.com/dgx/dgx-spark/hardware.html

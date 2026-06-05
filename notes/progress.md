@@ -145,6 +145,42 @@ When the user is ready to continue, the natural next steps are:
 
 ## LOG (append new entries at the top)
 
+### 2026-06-05 (morning) — BF16 benchmark re-measurement: SW Power Cap discovered
+
+User re-ran the BF16 GEMM benchmark on both the 25.11 and the newly-pulled
+26.04 containers. Surface result: 97.3 TFLOPS at N=16384 (the 2026-06-04
+headline number) had dropped to **67-70 TFLOPS** -- 30% regression.
+
+Diagnostic chain:
+
+- Same benchmark on cold-start, single-size `--sizes 16384`: 25.11=67.4,
+  26.04=67.3. **Containers within noise**, so not a software stack issue.
+- Temperature 63-67 °C, well below throttle, `HW Thermal Slowdown=0us`.
+- `nvidia-smi -q -d PERFORMANCE` shows `SW Power Capping` counter at
+  ~33,900 seconds over 33 hours uptime -- the **NVIDIA driver itself** is
+  actively capping clocks at the SoC-envelope level, not the silicon limit.
+- During a benchmark, the counter advances ~3 sec per 30 sec sampling window
+  (10% intermittent capping).
+- Causal context: machine has been running 33 h with GNOME desktop, 6 sshd
+  sessions, dashboard service, node, VS Code Remote-SSH all alive. The 140 W
+  GB10 SoC TDP is shared CPU↔GPU↔LPDDR5x; any CPU spikes steal envelope.
+- N≤8192 GEMMs still hit ~93-95 TFLOPS (fit in cache, less memory bandwidth
+  pressure). The regression is specifically large-N (≥12288) where the GEMM
+  becomes LPDDR5x bandwidth bound and any contending memory traffic visibly
+  hurts.
+
+**Conclusion:** 97 TFLOPS was a *clean-room ceiling*. The realistic daily
+sustained number for this unit under normal working conditions is ~70 TFLOPS
+at N=16384 (or ~90-95 at N=8192). Recorded both in `notes/hardware-gx10.md`
+with a new "Re-measurement on 2026-06-05" section, plus mitigations if the
+headroom is ever needed back (`systemctl stop gdm`, close extra sessions,
+benchmark immediately after reboot).
+
+**No action required for planned training workloads.** LoRA / SFT GEMMs are
+N≤4096; they don't hit this regression. Budget sustained 90-95 TFLOPS at
+LLM-typical sizes, but treat anything claiming >95 as a clean-room headline,
+not your daily baseline.
+
 ### 2026-06-05 — container refresh: 26.04 default, plus TensorRT + CUDA devel
 
 **Theme:** kill the dependency pin pain by upgrading the PyTorch container.
