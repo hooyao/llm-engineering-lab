@@ -20,6 +20,7 @@ Repo layout:
 ```
 CLAUDE.md                                  ← this file: directives + hardware spec
 notes/
+  why.md                                   ← motivation reminder — what this curriculum buys
   progress.md                              ← state snapshot + dated log (read first)
   bootstrap-gx10.md                        ← first-boot procedure + every pitfall hit
   hardware-gx10.md                         ← cited GB10 specs + this unit's measured perf

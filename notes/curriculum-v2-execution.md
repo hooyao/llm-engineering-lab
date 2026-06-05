@@ -1,5 +1,8 @@
 # Curriculum — three parallel tracks, ~1.5h per evening
 
+> **Why are you doing this?** See `notes/why.md`. Re-read when motivation flags.
+> Every day below maps to one of the 5 surviving fine-tuning use cases in 2026.
+
 This file is the **execution plan**. Three independent tracks, each ~1.5h/day, ~10-12
 sessions per track. Pick any track on any night; do not feel obliged to do all three
 the same day. You can run all three in ~6 weeks (5 sessions/week) or in ~4 weeks
