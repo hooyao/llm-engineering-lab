@@ -184,13 +184,65 @@ single-shot 97 for planning.
 ### Mitigations if you need the headroom back
 
 1. `sudo systemctl stop gdm` (kills the GNOME desktop while you train) -- frees
-   the largest single non-essential CPU+GPU consumer
+   the largest single non-essential CPU+GPU consumer. **Measured impact on this
+   unit: 67 → 76 TFLOPS at N=16384, +13%.** Not full recovery to 97.
 2. Close VS Code Remote-SSH sessions and extra terminal multiplexers during
-   long training runs
+   long training runs. Each `sshd` session has small but non-zero overhead.
 3. Run benchmarks immediately after a fresh reboot, not after a multi-hour
-   working day
+   working day. Long uptime appears to drive the EC firmware to a more
+   conservative power policy.
 4. The `SW Power Capping` counter is a real sensor -- read it before and after
-   long runs to verify whether you got the clean envelope or the contended one
+   long runs to verify whether you got the clean envelope or the contended one.
+
+### This is a known systemic issue, not a per-unit defect
+
+Confirmed by extensive community reporting. Same symptom (`SW Power Capping`
+active when GPU is supposed to be running flat-out, sometimes degrading
+further into a hard 14 W lock that requires a full power-cycle to clear) hits
+every DGX Spark / GB10 unit, including:
+
+- NVIDIA Developer Forum thread "DGX Spark Performance Degradation - GPU
+  Power Draw Issue" (65+ replies, persistent topic)
+- "DGX SPAK GPU power usage cap at 14 W" (March 2026): user describes GPU
+  stuck at 14 W after a crash, NVIDIA workaround = unplug power brick for
+  30 s to reset the EC controller
+- "GB10 is power limited after crash" (2026-06-04)
+- "Latest Update (20 Mar 2026) on Nvidia Spark FE caps GPU performance"
+- A CTO published a write-up across 14 DGX Spark units in their fleet
+  observing the same hard 14 W cap pattern repeatedly:
+  https://dredyson.com/a-ctos-definitive-guide-to-resolving-dgx-spark-gpu-power-draw-degradation/
+- Community diagnostic CLI `spark-doctor` was built specifically because of
+  these issues; first rule it checks is `power.low_draw_under_load`:
+  https://github.com/joeynyc/spark-doctor
+
+**Root cause** (community consensus + NVIDIA's own clarification):
+
+> NVIDIA, 2025-10-31 forum:
+> "DGX Spark's peak total system power is 240 W. The TDP of the GB10 SOC
+> which includes the GPU and the CPU is 140 W. The rest of the system
+> (ConnectX-7, SSD, USB-C provisioning) is 100 W. When measuring power usage
+> via nvidia-smi, the wattage displayed measures only GPU power."
+
+The 140 W SoC TDP is a hard envelope shared CPU↔GPU↔LPDDR5x memory
+controller. The driver actively caps GPU clocks to stay within it. Any
+CPU-side or memory-side activity reduces what's available for the GPU,
+regardless of `nvidia-smi`'s GPU-only power figure.
+
+### Practical implications for this curriculum
+
+- **LoRA / SFT / QLoRA training (the curriculum core) does NOT hit this
+  problem.** Those workloads are N≤4096 small GEMMs with memory bandwidth
+  well within budget; observed GPU draw stays in the 40-70 W range and
+  there's no envelope contention.
+- **Don't chase the 97 TFLOPS number** unless you have a clean-room
+  experimental need. The realistic working baseline for this unit, with
+  normal SSH sessions and a running dockerd, is **70-80 TFLOPS at N=16384
+  and ~93 TFLOPS at N=8192**.
+- If you ever DO need maximum GEMM throughput (e.g. for a tight
+  reproducibility comparison vs another hardware platform), follow this
+  procedure: `sudo systemctl stop gdm` → close all VS Code Remote-SSH
+  sessions → reboot for a fresh `uptime` → SSH in via a single session →
+  run benchmark immediately.
 
 ## Sources
 
@@ -207,3 +259,7 @@ single-shot 97 for planning.
 - rossingram/Spark-DGX-Benchmark — https://github.com/rossingram/Spark-DGX-Benchmark
 - NVIDIA DGX Spark Playbooks (DeepWiki, Hardware Platform) — https://deepwiki.com/NVIDIA/dgx-spark-playbooks/1.1-hardware-platform
 - NVIDIA NVLink-C2C overview — https://www.nvidia.com/en-us/data-center/nvlink-c2c/
+- NVIDIA forum, "DGX Spark Power Clarification" (official TDP breakdown, 2025-10-31) — https://forums.developer.nvidia.com/t/dgx-spark-power-clarification/349668
+- NVIDIA forum, "DGX SPAK GPU power usage cap at 14W" (March 2026 workaround thread) — https://forums.developer.nvidia.com/t/dgx-spak-gpu-power-usage-cap-at-14w/363487
+- Dre Dyson, "A CTO's Definitive Guide to Resolving DGX Spark GPU Power Draw Degradation" (fleet of 14 units, May 2026) — https://dredyson.com/a-ctos-definitive-guide-to-resolving-dgx-spark-gpu-power-draw-degradation/
+- joeynyc/spark-doctor (DGX Spark diagnostic CLI, detects 14 W cap and other GB10-specific issues) — https://github.com/joeynyc/spark-doctor

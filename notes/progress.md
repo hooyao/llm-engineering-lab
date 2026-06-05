@@ -145,6 +145,49 @@ When the user is ready to continue, the natural next steps are:
 
 ## LOG (append new entries at the top)
 
+### 2026-06-05 (morning, continued) — confirmed industry-wide GB10 SW Power Cap issue
+
+After yesterday's re-measurement showed the 97→67 TFLOPS regression at N=16384,
+searched community + NVIDIA forums. Confirmed this is not a per-unit problem:
+
+- NVIDIA forum thread "DGX Spark Performance Degradation - GPU Power Draw
+  Issue" has 65+ replies; multiple users report the same `SW Power Capping`
+  behavior; persistent open topic.
+- Hard version of the issue: GPU locks to 14 W after a crash, even with 96 %
+  utilization. Workaround = unplug power brick 30 s to reset the EC controller.
+  Multiple threads (March, June 2026).
+- A CTO published a detailed write-up after 14 of his company's DGX Spark
+  units all showed the same pattern. Recommends treating advertised
+  performance as 50% achievable in fleet planning.
+- A community CLI tool `spark-doctor` was specifically built to detect this
+  ("power.low_draw_under_load" rule is its first detect rule).
+- NVIDIA's own 2025-10-31 forum clarification: 140 W TDP is shared by **CPU +
+  GPU + memory controller**; `nvidia-smi` shows GPU-only power, which hides
+  the SoC-level contention story.
+
+Did a partial mitigation experiment:
+- Stopped gdm with `sudo systemctl stop gdm`, closed VS Code Remote-SSH
+- Re-ran benchmark at N=16384: **67 → 76 TFLOPS (+13%)**, GPU power 75 → 83 W
+- Still 21% below the 97 TFLOPS recorded on 2026-06-04
+- Concluded: 97 was clean-room with a fresh uptime; 76 is the realistic
+  ceiling with normal dev-machine sessions + dockerd running; the remaining
+  gap probably requires a full reboot + minimal-session run, which has zero
+  practical value for training work
+
+Updated `notes/hardware-gx10.md`:
+- "Mitigations" section now includes measured impact (+13%) of stopping gdm
+- New section "This is a known systemic issue, not a per-unit defect" with
+  links to the relevant NVIDIA forum threads, CTO write-up, and spark-doctor
+- New section "Practical implications for this curriculum" pointing out that
+  LoRA / SFT (the actual planned work) doesn't trigger the issue
+- Sources expanded with 4 new community references
+
+**No action needed for planned Track A / B work**. The 5 use cases for
+fine-tuning in 2026 (see `notes/why.md`) all involve LoRA-scale training that
+stays in the 40-70 W per-step regime, where SoC envelope contention is not the
+binding constraint. The SW Power Cap story is a benchmark-credibility issue,
+not a training-throughput issue.
+
 ### 2026-06-05 (morning) — BF16 benchmark re-measurement: SW Power Cap discovered
 
 User re-ran the BF16 GEMM benchmark on both the 25.11 and the newly-pulled
