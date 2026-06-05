@@ -135,15 +135,52 @@ When the user is ready to continue, the natural next steps are:
    If they ask "did we finish the smoke test?" the answer is "the pipeline is
    verified; the 200-step thermal/stability characterization wasn't run because
    we already got the same data from the BF16 GEMM benchmark."
-3. The HF token `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` was pasted into the
-   conversation earlier. **You told the user to revoke it.** Do not assume they did;
-   if they reference HF auth, re-mention this.
+3. An HF token was pasted into the conversation on the bootstrap day
+   (string redacted; original was `hf_GnecFHEN...` -- shortened here so the
+   GitHub push-protection secret scanner doesn't flag this file). **You
+   told the user to revoke it.** Do not assume they did; if they reference
+   HF auth, re-mention this.
 4. User mentioned reading Parr & Howard's "Matrix Calculus You Need for Deep
    Learning" in parallel (Track C). They are NOT blocked on math to start tracks A or B.
 
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-05 (later) — emergency playbook added (clock clamping, EC reset, ASUS-vs-FE firmware)
+
+User received a Gemini-generated "operations instruction set" suggesting:
+clock-clamp to 2150 MHz via `nvidia-smi -lgc 1665,2150`, persist via
+systemd, and apply `fwupdmgr update` to align to specific firmware
+versions (EC 3.3.2, USB PD 0.5.22, SoC 2.152.15).
+
+Verified each claim against NVIDIA docs and community sources:
+
+| Gemini claim | Verdict |
+|---|---|
+| `nvidia-smi -lgc` works on GB10 | TRUE (tested; needs sudo, not unsupported) |
+| EC firmware version 3.3.2, USB PD 0.5.22, SoC 2.152.15 are real | TRUE (NVIDIA DGX Spark release notes June 2026) |
+| The 80 W EC death lock | PARTIALLY MISLEADING — community reports 14 W lock, not 80 W |
+| 2150 MHz is the correct clamp value | NO SOURCE — community reports clamping helps but no authoritative number |
+| 2411 MHz default boost | OFF — this unit's Applications Clock is 2418 MHz, Max is 3003 MHz |
+| `fwupdmgr update` is the right path for this unit | NO — this unit is ASUS Ascent GX10 (partner system), NVIDIA explicitly says FE firmware versions only apply to FE |
+
+Decision: do NOT deploy any of these as defaults on this unit. The 14 W
+death lock and the sustained-shutdown crashes are real community-reported
+issues, but neither has been observed on this unit during 33h of testing.
+Recorded as an **emergency playbook** in `notes/hardware-gx10.md` so the
+mitigations are available if symptoms appear, without becoming a "just
+in case" deployment.
+
+Specifically the playbook covers:
+- Symptom triage table (4 distinct failure modes, distinguishing them)
+- 30-second power-brick unplug procedure for the 14 W lock
+- Clock clamping with `nvidia-smi -lgc`, with the strong caveat that the
+  community has no authoritative max value and to descend progressively
+- Explicit warning that ASUS GX10 ≠ DGX Spark FE for firmware purposes
+- Three-pass verification protocol for any firmware operation (Gemini's
+  one good idea was the three-pass gate, kept that)
+- Links to NVIDIA forum, spark-doctor CLI, Dre Dyson writeups
 
 ### 2026-06-05 (morning, continued) — confirmed industry-wide GB10 SW Power Cap issue
 

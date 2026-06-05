@@ -244,6 +244,138 @@ regardless of `nvidia-smi`'s GPU-only power figure.
   sessions → reboot for a fresh `uptime` → SSH in via a single session →
   run benchmark immediately.
 
+## Emergency playbook: hard shutdowns / 14 W power-cap lock / clock throttling
+
+This section is a **break-glass procedure**, not a default deployment guide.
+None of these mitigations are recommended on a healthy unit. They exist so
+that when something does go wrong, you don't have to re-derive the
+troubleshooting tree under pressure.
+
+### Symptom triage
+
+| Symptom | What it is | First action |
+|---|---|---|
+| Box silently powers off mid-workload (no kernel panic, no log) | The 14 W power cap death-lock, or EC over-current trip | Unplug power brick for **30+ s** to reset EC, then restart |
+| `nvidia-smi` shows ~14 W under sustained 96% util, model inference half speed | Same as above, in stuck state | Same: unplug power brick 30 s |
+| `SW Power Capping` counter accumulating but no crashes | Normal envelope contention (covered above) | No emergency action needed |
+| Repeated shutdowns within 10 min of sustained GPU load | Likely thermal / PD subsystem under-engineered for chassis | Consider clock clamp (see below) |
+| `HW Thermal Slowdown` counter rising | Actual thermal throttle (different from above) | Check fan, ambient temp, dust |
+
+### Hard reset for the 14 W death lock (the most common emergency)
+
+Reported by multiple users across NVIDIA forum threads (March + June 2026)
+and confirmed in fleet-scale write-ups. Procedure:
+
+1. `sudo shutdown -h now` (clean shutdown of the OS)
+2. **Unplug the power brick from the wall** (not just from the device)
+3. Wait **30 seconds minimum** to drain EC capacitor charge
+4. Plug back in, boot
+5. Verify with `nvidia-smi --query-gpu=power.draw --format=csv` -- should
+   return to normal idle range (5-15 W). Run a small benchmark to confirm
+   it can ramp to 60-90 W on demand.
+
+This reset is needed because the EC firmware can latch into a low-power
+state that no software (driver reload, reboot, suspend) can clear. The 30s
+power-off lets the EC microcontroller fully de-energize and reinitialize.
+
+### Clock clamping (last resort, only if sustained shutdowns recur)
+
+If the unit reproducibly crashes within ~10 minutes of sustained boost
+clocks, the community (Dre Dyson quant lab,
+https://dredyson.com/how-i-fixed-dgx-spark-overheating-shutdowns-...)
+reports clock throttling fixes it. The mechanism: boost clocks pull
+transient current that the chassis PD subsystem can't sustain, EC trips.
+
+**No authoritative max-clock value exists.** Try progressively lower
+ceilings until stable; do not blindly pick 2150 MHz just because
+ChatGPT/Gemini suggested it.
+
+Procedure:
+
+```bash
+# Inspect current clock envelope
+nvidia-smi -q -d CLOCK | grep -A 2 "Max Clocks\|Applications Clocks"
+#  - Applications Clocks (default): ~2418 MHz on this unit
+#  - Max Clocks (hard limit): ~3003 MHz on this unit
+
+# Try a conservative clamp (needs sudo). Syntax:  -lgc <min>,<max>
+sudo nvidia-smi -lgc 1665,2200   # try 2200 first, descend if still crashes
+
+# Verify it took effect
+nvidia-smi -q -d CLOCK | grep "Applications Clocks" -A 1
+
+# Reset (undo) at any time
+sudo nvidia-smi -rgc
+```
+
+The `-lgc` command requires the NVIDIA driver to allow user clock
+control; tested on this unit, the syntax is accepted (it errors only on
+permission, not on "unsupported"). Confirmed needs root.
+
+If a specific clamp ceiling works, persist it across reboots with a
+systemd unit:
+
+```ini
+# /etc/systemd/system/gpu-clock-clamp.service
+[Unit]
+Description=NVIDIA GPU Clock Clamping (workaround for boost-clock PD trip)
+After=nvidia-persistenced.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nvidia-smi -lgc 1665,2200
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable with:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now gpu-clock-clamp.service
+```
+
+**Cost of clamping**: caps boost clock, so peak GEMM throughput drops
+proportionally. A 2200 MHz clamp vs ~2418 MHz default applications clock
+costs roughly 9 % peak throughput. Acceptable trade if it stops crashes;
+unacceptable as a "just in case" prophylactic.
+
+### Firmware updates: this is ASUS GX10, NOT DGX Spark Founders Edition
+
+NVIDIA publishes a current-firmware table at
+https://docs.nvidia.com/dgx/dgx-spark/release-notes.html with versions
+like `EC 3.3.2`, `USB PD 0.5.22`, `SoC 2.152.15`. **Those numbers apply
+to the Founders Edition only.** The same page states:
+
+> "These release versions apply only to the DGX Spark Founders Edition.
+> GB10-based partner systems may not receive updates at the same time."
+
+This unit is an **ASUS Ascent GX10** -- a partner system. Implications:
+
+- **Do not run `fwupdmgr update` blindly assuming NVIDIA's FE firmware
+  capsules apply.** They might not be in your LVFS feed; if they are,
+  applying them on partner hardware is unsupported and risks bricking.
+- ASUS publishes their own DGX OS image at
+  https://www.asus.com/networking-iot-servers/desktop-ai-supercomputer/ultra-small-ai-supercomputers/asus-ascent-gx10/helpdesk_download
+  (currently `7.4.0-3`, ~9 GB). Their firmware updates ship through that
+  channel.
+- This unit's `fwupdmgr get-updates` already returned "No updates
+  available" (2026-06-04). Trust that until ASUS posts an updated image.
+- If a firmware update IS needed for a real reason: **the three-pass
+  verification protocol applies**. Stop. Document the reason. Ask the
+  user to confirm three times across three separate turns. Then, and
+  only then, run the capsule. Never auto-apply.
+
+### Where to ask if symptoms don't match anything above
+
+- NVIDIA Developer Forum, "DGX Spark / GB10" category:
+  https://forums.developer.nvidia.com/c/accelerated-computing/dgx-spark-gb10/719
+- Community diagnostic CLI `spark-doctor` (run `spark-doctor scan` for a
+  one-shot health report): https://github.com/joeynyc/spark-doctor
+- Long-form fleet experience reports:
+  https://dredyson.com/ (search "DGX Spark")
+
 ## Sources
 
 - NVIDIA DGX Spark Hardware Overview — https://docs.nvidia.com/dgx/dgx-spark/hardware.html
