@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. **No analogies.** Use the correct English ML/systems terminology directly. Never analogize to .NET, GC, allocators, RDMA, or any other domain. Analogies are allowed **only** when the user explicitly asks ("类比一下" / "compare to ..."). Define a non-obvious term once on first use, then use it verbatim (e.g. `KV cache`, `ZeRO-3`, `reduce-scatter`, `activation checkpointing`, `paged optimizer`, `NF4`, `tensor parallel`, `pipeline parallel`, `gradient accumulation`, `Flash-Attention`, `CUDA graph`).
 2. **Conversation language: 中文.** All replies to the user are written in Chinese. Keep technical terms in English (model names, API names, parameters, code symbols).
 3. **Code and doc language: English.** All code, comments, docstrings, READMEs, commit messages, and in-repo notes are written in English.
+4. **Tool-call language: English.** All free-text passed into tool-call parameters — Agent / Workflow sub-agent prompts, `AskUserQuestion` question / option / header text, Task subjects and descriptions, search queries — is written in English, even when the surrounding conversation is 中文. (Mixed zh-en tool invocations have been reported to misbehave; keep payloads single-language to be safe.) This does NOT override directive 2: user-facing prose replies stay 中文. Only the tool-call payloads are English — including `AskUserQuestion` text, which the user reads in English as a deliberate trade-off.
+5. **English is the default for everything except the user-facing conversation.** Concretely, the *only* thing written in 中文 is directive 2's prose replies to the user. Everything else is English: code, comments, docstrings, notes, `notes/*.md`, commit messages, in-repo docs (directive 3), tool-call payloads (directive 4), **and the assistant's own internal reasoning / thinking** — think in English even while the reply will be 中文. If you ever have a concrete reason to persist something in 中文 (e.g. a verbatim user quote, a Chinese-language dataset sample, a term with no good English equivalent), do **not** silently write it — surface it to the user and get review first.
 
 ## Where to Read State (do this first on a new session)
 
@@ -20,17 +22,26 @@ Repo layout:
 ```
 CLAUDE.md                                  ← this file: directives + hardware spec
 notes/
-  why.md                                   ← motivation reminder — what this curriculum buys
+  why.md                                   ← motivation reminder — what the model-side curriculum buys
   progress.md                              ← state snapshot + dated log (read first)
   bootstrap-gx10.md                        ← first-boot procedure + every pitfall hit
   hardware-gx10.md                         ← cited GB10 specs + this unit's measured perf
   curriculum.md                            ← static asset catalog + memory-budget tables
-  curriculum-v2-execution.md               ← day-by-day learning plan (3 tracks)
+  curriculum-v2-execution.md               ← model side: day-by-day plan (Tracks A/B/C)
+  career-transition-research.md            ← career leg: target roles, locations, leveling, visa, comp
 tools/
   download_models.py                       ← office-side HF downloader
   verify_models.py                         ← SHA256 integrity checker
   launch_pytorch.sh                        ← standard `docker run ...` wrapper
-experiments/                               ← per-experiment subdirs (one per day in tracks)
+experiments/                               ← model-side per-day subdirs (one per day in Tracks A/B/C)
+agent/                                     ← AGENTIC leg (Track D): build a Claude Code-style agent core by hand
+  README.md                                ← two-halves framing + source-tiering rule + how the 3 submodules combine
+  why-agent.md                             ← motivation for the agent path; wired to the job search
+  curriculum-agent.md                      ← Track D day-by-day plan (D1–D16, two phases)
+  research/2026-agent-patterns.md          ← cited/verified research — source of truth for the frontier half
+  refs/                                    ← submodules: claude-reviews-claude (teaching),
+                                             claude-code-sourcemap (source of truth), Astra (your C# impl)
+  experiments/                             ← Track D per-day deliverables (dNN-<slug>)
 dgx-spark-playbooks/                       ← submodule → NVIDIA/dgx-spark-playbooks
 ```
 
@@ -43,9 +54,30 @@ SNAPSHOT block if any facts changed. Don't let progress.md get stale.
 
 ## Repository Purpose
 
-Personal learning repository for mastering LLM fine-tuning end-to-end: full-parameter SFT, LoRA / QLoRA, PEFT adapters, DeepSpeed (ZeRO-1/2/3 + offload), FSDP, RLHF/DPO. Also covers from-scratch pretraining of small models (TinyStories scale) and the full RLHF pipeline (RM + PPO + DPO) for educational purposes.
+This repo is the workspace for the user's **career transition into model-facing
+AI work** (from Microsoft L64 senior cloud engineer). It is no longer a pure
+fine-tuning project. It has **three legs**:
 
-The day-by-day execution plan lives in `notes/curriculum-v2-execution.md`. Per-day work goes under `experiments/<track><day>-<slug>/` (e.g. `experiments/a01-mem-budget/`).
+1. **Model side** — mastering LLM fine-tuning end-to-end: full-parameter SFT,
+   LoRA / QLoRA, PEFT adapters, DeepSpeed (ZeRO-1/2/3 + offload), FSDP, RLHF/DPO,
+   plus from-scratch pretraining (TinyStories scale) and the full RLHF pipeline
+   (RM + PPO + DPO). Plan: `notes/curriculum-v2-execution.md` (Tracks A/B/C).
+   Per-day work under `experiments/<track><day>-<slug>/` (e.g.
+   `experiments/a01-mem-budget/`).
+2. **Agentic side** — building a Claude Code-style agent core **by hand** in
+   Astra (the user's C# framework), plus the half Claude Code omits (RAG, agent
+   eval, memory, interop). Plan: `agent/curriculum-agent.md` (Track D, D1–D16).
+   Per-day work under `agent/experiments/dNN-<slug>/`; code lands in the Astra
+   submodule. Start by reading `agent/README.md`.
+3. **Career transition** — where the skills land: target roles, locations,
+   leveling, visa, comp. `notes/career-transition-research.md`. Per its §2,
+   "AI/LLM Agent Engineer" is the most reachable model-facing role for this
+   profile, so Track D is high-priority, not a side quest.
+
+The three legs are complementary: the strongest job-search portfolio (per the
+career research, Phase 0) is fine-tuning **and** FSDP/DeepSpeed **and**
+agent/evals together — keeping the user's systems/infra moat while adding the
+model-facing entry ticket.
 
 ## Audience and Communication Conventions
 
@@ -76,9 +108,9 @@ history: give the answer, explain briefly why, flag uncertainty.
 
 Triggered automatically when **all** of the following are true:
 
-- The work targets a path matching `experiments/[abc]\d+-*` (e.g. `experiments/a01-mem-budget/`, `experiments/c03-chain-rule/`)
+- The work targets a path matching `experiments/[abc]\d+-*` (e.g. `experiments/a01-mem-budget/`, `experiments/c03-chain-rule/`) or `agent/experiments/d\d+-*` (e.g. `agent/experiments/d01-agent-loop/`), or the deliverable is a Track D subsystem written into the Astra submodule
 - The task is implementing or designing something *new* (not debugging existing curriculum code)
-- The concept under discussion is one the curriculum (`notes/curriculum-v2-execution.md`) names as a learning target for that day
+- The concept under discussion is one the curriculum (`notes/curriculum-v2-execution.md` for the model side, `agent/curriculum-agent.md` for Track D) names as a learning target for that day
 
 Also triggered explicitly when the user says **"teach me ..."**, **"walk me through ..."**, or **"don't just give me the answer"**.
 
@@ -118,6 +150,30 @@ In tutor mode:
 ## Notes and State Live in This Repo
 
 All persistent notes, decisions, learning logs, and configuration belong inside this repository. Do **not** write to `~/.claude/.../memory/`, `MEMORY.md`, or any out-of-repo store. If something is worth remembering across sessions, commit it to a file here (e.g. `notes/`, `decisions/`, topic subdirs). Treat the repo as the single source of truth.
+
+## Web Search Tooling (do NOT use the built-in WebSearch tool)
+
+The built-in `WebSearch` tool is **broken in this environment** — on the current
+backend it returns `API Error 400: web_search_20250305 ... not supported on the
+GitHub Copilot backend` and yields zero results. Do not call it. (The built-in
+`WebFetch` tool, which fetches a specific URL, still works — only keyword search
+is broken.)
+
+For any keyword web search, use a local search MCP server instead. Available in
+this session:
+
+- **`brave-search`** — `mcp__brave-search__brave_web_search` (general web),
+  plus `brave_news_search`, `brave_image_search`, `brave_video_search`,
+  `brave_local_search`. Returns real results.
+- **`Search-MCP`** — `mcp__Search-MCP__web` (web), `mcp__Search-MCP__news`,
+  `mcp__Search-MCP__browse` (fetch + extract a URL), `images`, `videos`,
+  `places`, `finance`, `sports`. Returns real results.
+
+Default to `brave-search` for quick lookups and `Search-MCP__web` /
+`Search-MCP__browse` when you need page content extracted. Use `WebFetch` when
+you already have a specific URL to read. The `deep-research` workflow's internal
+sub-agents have their own working search path and are unaffected by the broken
+built-in tool.
 
 ## Quantification Rule
 

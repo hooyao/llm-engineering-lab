@@ -1,3 +1,12 @@
 [submodule "dgx-spark-playbooks"]
 	path = dgx-spark-playbooks
 	url = https://github.com/NVIDIA/dgx-spark-playbooks.git
+[submodule "agent/refs/Astra"]
+	path = agent/refs/Astra
+	url = https://github.com/hooyao/Astra.git
+[submodule "agent/refs/claude-reviews-claude"]
+	path = agent/refs/claude-reviews-claude
+	url = https://github.com/hooyao/claude-reviews-claude.git
+[submodule "agent/refs/claude-code-sourcemap"]
+	path = agent/refs/claude-code-sourcemap
+	url = https://github.com/hooyao/claude-code-sourcemap.git

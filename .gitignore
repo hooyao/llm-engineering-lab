@@ -56,3 +56,8 @@ nohup.out
 .env
 .env.*
 !.env.example
+
+# Copyrighted reading material kept locally (Parr & Howard, etc.) — do not redistribute
+notes/*.pdf
+notes/*.html
+notes/*_files/

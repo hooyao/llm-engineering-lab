@@ -142,10 +142,77 @@ When the user is ready to continue, the natural next steps are:
    HF auth, re-mention this.
 4. User mentioned reading Parr & Howard's "Matrix Calculus You Need for Deep
    Learning" in parallel (Track C). They are NOT blocked on math to start tracks A or B.
+5. **Track D (agent engineering) exists now** — `agent/curriculum-agent.md`,
+   D1–D16, two phases. Day 1 is `agent/experiments/d01-agent-loop/`: implement
+   the `while(true)` agent loop in the Astra submodule. Not started. The project
+   is now **three legs** (model side / agentic side / career) — see CLAUDE.md
+   "Repository Purpose". The agent-side work is mode-gated like Tracks A/B/C
+   (tutor mode for new Track D subsystem work).
 
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-06 — project reframed to three legs; Track D (agent engineering) added
+
+**Theme:** the repo is no longer a pure fine-tuning project — it is the workspace
+for the user's full AI career transition. Three legs now: (1) model side
+(Tracks A/B/C), (2) agentic side (new Track D), (3) career
+(`notes/career-transition-research.md`).
+
+What was done this session:
+
+- **CLAUDE.md**: added directive 5 (English is default for everything except the
+  user-facing conversation, incl. internal reasoning; flag any 中文 persistence
+  for review before writing). Added a "Web Search Tooling" section: the built-in
+  `WebSearch` tool is broken on this backend (API Error 400) — use the
+  `brave-search` and `Search-MCP` MCP servers instead; `WebFetch` still works.
+  Rewrote "Repository Purpose" to the three-leg framing. Extended the Tutor-mode
+  trigger to cover `agent/experiments/d\d+-*` and Astra subsystem work. Updated
+  the repo-layout block to include `agent/`.
+- **New `agent/` folder (Track D — Agent Engineering):**
+  - `README.md` — two-halves framing (CC source teaches the agent core's *how*;
+    blogs/papers teach the frontier half CC lacks: RAG/eval/memory/interop) +
+    the source-tiering rule (judge by whether a source discusses
+    cost/latency/context-rot/eval/failure modes, NOT by domain name) + how the
+    three submodules combine.
+  - `why-agent.md` — motivation, wired to the career research: "AI/LLM Agent
+    Engineer" is the most reachable model-facing role and the one direction that
+    does NOT make the user give up their systems/infra moat. Maps to specific
+    target JDs (MS Applied AI Engineer II, Dublin Agent Cloud, Copilot Tuning).
+  - `curriculum-agent.md` — D1–D16, two phases. Phase D-I (D1–D8): re-implement
+    the CC agent core in Astra (loop, tools, orchestration, streaming,
+    permissions, context, compaction, multi-agent). Phase D-II (D9–D16): the
+    frontier half (memory tool, agentic RAG, CRAG, RAGAS eval, LLM-as-judge,
+    OTel tracing, MCP/A2A interop, capstone research agent).
+  - `research/2026-agent-patterns.md` — the cited research report (see below),
+    source of truth for the frontier half.
+- **Three submodules under `agent/refs/`:**
+  - `Astra` (https://github.com/hooyao/Astra) — the user's C# agent framework;
+    **read-write** submodule (develop in its tree, bump the pinned commit like
+    `dgx-spark-playbooks`). This is the implementation layer.
+  - `claude-code-sourcemap` (https://github.com/hooyao/claude-code-sourcemap) —
+    restored TS source of Claude Code v2.1.88 (`restored-src/src/`). Source of
+    truth / "how does it actually do X". (Note: an earlier attempt used
+    `claude-code-compilable` by mistake; the user corrected it — that repo is to
+    be ignored. The swap is done.)
+  - `claude-reviews-claude` (https://github.com/hooyao/claude-reviews-claude) —
+    17-chapter CC architecture analysis. Teaching layer (read the chapter first).
+- **Research basis:** ran the `deep-research` workflow (106 sub-agents, ~8M
+  tokens, 5 angles, 25/25 claims verified at 3 votes, 0 refuted) + a targeted
+  brave-search/Search-MCP supplemental pass to fill the two gaps the funnel
+  missed (Agentic RAG internals, MCP/A2A interop). The verified corpus is
+  heavily Anthropic-primary (appropriate for "re-implement a Claude Code-style
+  agent"); the multi-agent 90.2% result is internal/self-reported with a token-
+  spend confound — recorded as a caveat in the report.
+
+**Not committed.** All of the above is staged in the working tree but not yet
+committed (the user has not asked to commit). When committing: the three new
+submodule pointers + `.gitmodules` go in the same commit as the `agent/` docs.
+
+**Next:** Track D Day 1 — `agent/experiments/d01-agent-loop/` — implement the
+`while(true)` agent loop in Astra (`AgentLoop.SubmitAsync()` →
+`IAsyncEnumerable<AgentEvent>`), no tools yet.
 
 ### 2026-06-05 (evening) — cold reboot fully recovers BF16 throughput
 
