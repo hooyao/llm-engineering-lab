@@ -14,8 +14,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 On a fresh Claude session, **read `notes/progress.md` first**. Top of that file is a
 snapshot of what physically exists right now on the GX10 (IP, sudo pattern, software
-versions, model files on disk, performance numbers, dependency pin gotchas), and a
-list of open threads / next steps the user wants to pick up.
+versions, model files on disk, performance numbers, dependency pin gotchas), a
+**LEARNING STATE block** (where the user is across all tracks), and a list of open
+threads / next steps the user wants to pick up.
+
+**Routing by what the user wants to continue:**
+
+- **Model side** ("continue fine-tuning / Track A/B/C", "next curriculum day") →
+  `notes/curriculum-v2-execution.md` + the LEARNING STATE block in progress.md.
+- **Agent side** ("continue agent", "Track D", "work on Astra") → read
+  `agent/README.md` (two-halves framing + tutor-mode rule) then
+  `agent/curriculum-agent.md` (find the next undone D-day). Once you start
+  *building*, the agent-core state lives in the **Astra submodule's own
+  `progress.md` and `CLAUDE.md`** (`agent/refs/Astra/`) — read those too; this
+  repo only tracks which Track D day is next, not what's implemented inside Astra.
+- **Career** ("relocation", "which role/site", "comp") → `notes/career-transition-research.md`.
 
 Repo layout:
 

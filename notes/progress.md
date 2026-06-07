@@ -123,6 +123,27 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 ---
 
+## LEARNING STATE (where the user is across all tracks)
+
+> A new session: this is the "what have I actually done" block. The hardware
+> snapshot above is what *exists*; this is how far the *learning* has gone.
+> Update the "next" column whenever a day is finished.
+
+| Track | What | Done so far | Next concrete step |
+|---|---|---|---|
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | none (only smoke-test pipeline verified) | A1 — `experiments/a01-mem-budget/budget.py` |
+| **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
+| **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
+| **D** Agent eng | `agent/curriculum-agent.md` | path designed; 3 submodules added; research report written. **No D-day started.** | D1 — agent loop in Astra (`AgentLoop.SubmitAsync()` → `IAsyncEnumerable<AgentEvent>`, no tools) |
+| **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
+
+**For Track D specifically:** the next-step state above only tracks *which day*.
+Once building starts, the agent-core implementation state lives in the **Astra
+submodule** (`agent/refs/Astra/progress.md` + its `CLAUDE.md`). Read those before
+writing Astra code so you don't re-do or contradict prior work there.
+
+---
+
 ## Open threads (the "next session, pick up here" list)
 
 When the user is ready to continue, the natural next steps are:
