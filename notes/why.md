@@ -182,6 +182,7 @@ To set expectations:
 | **B5-B7** | TinyStories pretrain | End-to-end pretrain on GX10 | Concrete answer to "what does pretraining actually do" — most engineers will never have this |
 | **B8-B11** | SFT + RM + PPO + DPO | RLHF full pipeline | Use case #4 deeply; also resume-level credibility |
 | **B12** | Read OLMo | Production pretrain reference | You map your toy code to real-world scale |
+| **B13-B16** | minimind modern stack | Qwen3 arch (RMSNorm/RoPE/SwiGLU/GQA) + MoE + hand-written GRPO/distill/agentic | Bridges your from-scratch code to the arch you actually fine-tune; adds 2025-frontier techniques (MoE, GRPO) framework-free |
 | **C1-C6** | Calculus + backprop | Hand-derive everything | You stop being scared of `loss.backward()` |
 | **C7-C9** | AdamW + KL + DPO loss | Derive on paper | You can debug optimizer / loss issues, not just file a github issue |
 | **C10** | Paper readthrough | One paper, every equation | Validates you're now equation-literate |
@@ -191,7 +192,7 @@ To set expectations:
 ## How to use this file
 
 - Re-read this whenever a week feels like "why am I doing this"
-- After each track checkpoint (A10, B12, C10), come back and re-read — your
+- After each track checkpoint (A10, B16, C10), come back and re-read — your
   understanding of what each section meant will deepen
 - Add a personal note at the bottom of this file at week 4 + week 8:
   what concretely changed about how you think and what you can do

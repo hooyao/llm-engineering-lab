@@ -174,6 +174,52 @@ When the user is ready to continue, the natural next steps are:
 
 ## LOG (append new entries at the top)
 
+### 2026-06-13 — Track B extended with minimind modern-stack sequel (B13–B16)
+
+Evaluated `jingyaogong/minimind` (verified against the live repo, not just the
+README: `model/model_minimind.py` single-file model + `trainer/train_*.py` per
+stage). It was **not** previously in any curriculum. Decision: add it as a
+4-day sequel to Track B, **after B12**, leaving B1–B11 hand-written days
+untouched.
+
+Why it earns a place (vs the existing nanoGPT/TinyStories Track B):
+
+- **Architecture bridge.** B1–B12 build a GPT-2-era model (LayerNorm, learned
+  abs pos, MHA, GELU). The model the user actually fine-tunes in Track A is
+  **Qwen3-8B** (RMSNorm/RoPE/SwiGLU/GQA). minimind is a from-scratch
+  **Qwen3-aligned** impl — closes that mismatch.
+- **Framework-free RL.** Track B's PPO/DPO (B10/B11) use TRL wrappers. minimind
+  hand-writes PPO, DPO, **GRPO** in native PyTorch — read after the user knows
+  the math (C7–C9 + B9–B11).
+- **Net-new, resume-relevant:** MoE-from-scratch (lands the long-pending
+  "MoE extension" from `curriculum.md`), GRPO/CISPO, distillation, agentic RL.
+
+New days written into `curriculum-v2-execution.md`:
+
+- **B13** — architecture bridge: rewrite the B4 block into RMSNorm/RoPE/SwiGLU/GQA,
+  verify against minimind's block.
+- **B14** — MoE from scratch: `use_moe=True`, `num_experts=4`,
+  `num_experts_per_tok=1`; active-vs-total param accounting + router-balance check.
+- **B15** — GRPO hand-written, contrasted with B10 PPO / B11 DPO on one table.
+- **B16** — pick one: knowledge distillation (black/white-box) OR agentic RL
+  (`train_agent.py` + `rollout_engine.py`, explicitly wired to Track D).
+
+Verified config field names/defaults from `MiniMindConfig`: `use_moe=False`,
+`num_experts=4`, `num_experts_per_tok=1`, `hidden_size=768`,
+`num_hidden_layers=8`, `num_attention_heads=8`, `num_key_value_heads=4`,
+`vocab_size=6400`, `max_position_embeddings=32768`, `rope_theta=1e6`. MoE/size
+are config-file edits, **not** CLI flags.
+
+GX10 footprint: minimind-3 (64M) ~0.77 GB full state; MoE (~198M total) ~2.4 GB —
+both trivial in the 128 GB pool. Train full data (`pretrain_t2t` 10 GB +
+`sft_t2t` 14 GB + RL files, ~25 GB) from HF `jingyaogong/minimind_dataset`, not
+the `_mini` subsets. README's "3 RMB / 2 h" is 1-epoch SFT on a 3090; GX10 faster.
+
+Synced downstream refs: `why.md` Track B table (added B13–B16 row; checkpoint
+B12→B16), `curriculum.md` (MoE extension now points at B13–B16). Track B title
+12→16 evenings. **No curriculum days executed** — this is planning only;
+Track B learning state is still "B1 not started."
+
 ### 2026-06-06 — project reframed to three legs; Track D (agent engineering) added
 
 **Theme:** the repo is no longer a pure fine-tuning project — it is the workspace

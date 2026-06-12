@@ -85,8 +85,9 @@ Verify, don't guess: `torch.cuda.memory._record_memory_history()` + snapshot, or
 ## Suggested sequence
 
 See `curriculum-v2-execution.md`. The catalog above is consumed by Track A
-(fine-tuning) and the MoE extension; Track B (pretrain from scratch) downloads
-its own data (TinyStories) at the time.
+(fine-tuning); Track B (pretrain from scratch) downloads its own data
+(TinyStories for B1–B12, then `jingyaogong/minimind_dataset` for the B13–B16
+modern-stack sequel, which is also where the MoE extension now lives).
 
 ## LoRA target modules (reference)
 

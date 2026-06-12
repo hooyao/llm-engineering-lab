@@ -321,7 +321,7 @@ recap in `notes/track-a-recap.md`.
 
 ---
 
-# Track B — Pretraining + RLHF from scratch (12 evenings)
+# Track B — Pretraining + RLHF from scratch (16 evenings)
 
 **Goal at the end:** You've written every line of a small LLM, from tokenizer to
 attention to optimizer to RLHF, in clean PyTorch. You can read any production LLM
@@ -521,10 +521,190 @@ model training. This is why everyone moved to it.
 **Deliverable:** `notes/olmo-map.md` with one line per OLMo component you now
 recognize, and which day in Track B introduced it.
 
+---
+
+## B13–B16 — Modern-stack sequel (minimind)
+
+**Framing.** Everything up to B12 built a **GPT-2-era** model: LayerNorm, learned
+absolute positions, multi-head attention, GELU, a GPT-2/BPE vocab. But the model
+you actually fine-tune in Track A is **Qwen3-8B**, which uses RMSNorm, RoPE,
+SwiGLU, and grouped-query attention (GQA) — none of which you've written. These
+four days close that gap using **minimind** (`jingyaogong/minimind`,
+https://github.com/jingyaogong/minimind), a from-scratch, native-PyTorch
+implementation of a **Qwen3-aligned** tiny LLM. The whole model is one ~19 KB
+file (`model/model_minimind.py`); the training stages are one script each under
+`trainer/`.
+
+**Why minimind and not "keep extending nanoGPT":** minimind is deliberately
+modern-aligned (RMSNorm + RoPE + SwiGLU + GQA + optional MoE) and it **hand-writes
+the things Track B's RLHF days delegated to TRL** (PPO, DPO, GRPO are full native
+PyTorch loops, not `trl` wrappers). So it serves two distinct purposes: (1) an
+architecture bridge to the Qwen3 stack, and (2) a "now that you know the math,
+read a framework-free implementation" reference for the RL algorithms. It is a
+**read / annotate / run-and-modify** reference (like B5's nanoGPT), **not** a
+replacement for the B1–B4 hand-written days.
+
+**Order matters:** these come **after B11**, because reading minimind's hand-written
+PPO/DPO/GRPO only pays off once you've (a) done the TRL versions in B10/B11 and
+(b) derived the losses in Track C7–C9. Don't pull these earlier.
+
+**GX10 footprint (so you size runs correctly).** minimind targets a single 3090
+(24 GB). On the GX10 the 128 GB unified pool makes memory a non-issue — train the
+full-size data, not the `_mini` subsets:
+
+- minimind-3 dense, `hidden_size=768`, `num_hidden_layers=8`, ~64M params.
+  BF16 weights + AdamW (m,v = 8 B/param) + grads (2 B/param):
+  `64M × (2 + 8 + 2) ≈ 0.77 GB`. Activations at seq_len 512, small batch add a
+  few hundred MB. Trivial here.
+- minimind-3-moe, 4 experts top-1, ~198M total / ~64M active. State is sized by
+  **total** params (all experts' weights live in memory):
+  `198M × 12 ≈ 2.4 GB`. Still trivial.
+- Dataset: full `pretrain_t2t.jsonl` (10 GB) + `sft_t2t.jsonl` (14 GB) + the
+  preference/RL files (~150 MB) ≈ **~25 GB on disk** — fits the 1 TB NVMe with
+  room. Pull from HF `jingyaogong/minimind_dataset` into `./dataset/`.
+- The README's "~3 RMB / ~2 h" headline is **1 epoch of SFT on one 3090**. On the
+  GX10 expect faster; budget against measured BF16 throughput, not that figure.
+
+**Setup (once, before B13):**
+
+```
+git clone --depth 1 https://github.com/jingyaogong/minimind ~/external/minimind
+# download dataset files from HF jingyaogong/minimind_dataset into ~/external/minimind/dataset/
+```
+
+All training scripts run from `cd ~/external/minimind/trainer` and support
+`--from_resume 1` and `--use_wandb`. Single-GPU is `python train_xxx.py`
+(or `torchrun --nproc_per_node 1 train_xxx.py`). **Model size and the MoE toggle
+are NOT CLI flags** — they live in the `MiniMindConfig` dataclass at the top of
+`model/model_minimind.py` (see B14).
+
+---
+
+## B13 — Architecture bridge: GPT-2 block → Qwen3 stack
+
+**Why:** Make the four modern primitives concrete by diffing your own B4 block
+against minimind's. After today, every architectural choice in the Qwen3 model
+you fine-tune in Track A has a line of code you've read and understood.
+
+**Do:**
+
+- Read `model/model_minimind.py` top to bottom (~19 KB, one sitting). Map each
+  piece back to your B4 implementation:
+  - **RMSNorm** vs your LayerNorm — why drop the mean-subtraction and the bias.
+  - **RoPE** vs your absolute positional embedding — find where `rope_theta=1e6`
+    enters and how the rotation is applied to Q and K (not V).
+  - **SwiGLU** vs your GELU MLP — note it's a *gated* MLP with **three** weight
+    matrices (gate, up, down), not two.
+  - **GQA** vs your MHA — `num_attention_heads=8`, `num_key_value_heads=4`: K/V
+    are shared across head groups. Compute the KV-cache saving vs full MHA.
+- In `experiments/b13-modern-block/`, take your B4 `attn.py` transformer block and
+  **rewrite it** into the modern stack: replace LayerNorm→RMSNorm, absolute
+  pos→RoPE, GELU-MLP→SwiGLU, MHA→GQA. Keep it a single forward-pass module.
+- Verify your rewritten block's output matches minimind's `MiniMindBlock` (or the
+  equivalent) within float tolerance on a fixed random input.
+
+**Term:** *RMSNorm*, *RoPE* (rotary position embedding), *SwiGLU*, *GQA*
+(grouped-query attention), *KV head*.
+
+**Deliverable:** `experiments/b13-modern-block/block.py` (your modern block) +
+a short `diff.md` listing the four swaps and, for GQA, the KV-cache-size formula
+`2 × num_kv_heads × head_dim × seq_len × layers × dtype_bytes` and the ratio vs MHA.
+
+## B14 — MoE from scratch
+
+**Why:** Mixture-of-Experts is the architecture behind most frontier 2025 models
+(routed FFN, only top-k experts active per token). minimind's MoE is small enough
+to read end to end. This day finally lands the long-pending "MoE extension."
+
+**Do:**
+
+- In `model/model_minimind.py`'s `MiniMindConfig`, the MoE knobs are:
+  `use_moe=False` (toggle), `num_experts=4` (routed experts),
+  `num_experts_per_tok=1` (top-k routing). Read the MoE FFN class: how the router
+  scores experts, how top-1 is selected, how outputs are combined, and where the
+  **load-balancing / aux loss** is computed.
+- Set `use_moe=True` and pretrain the MoE variant (`python train_pretrain.py`
+  from `trainer/`, after editing the config). Compare to the dense run:
+  - **Active** vs **total** params (only `num_experts_per_tok` of `num_experts`
+    fire per token).
+  - Memory: state is sized by **total** params (all experts resident), throughput
+    by **active** params. Write both numbers.
+- Watch the router: log which experts get picked. Confirm the aux loss is keeping
+  utilization from collapsing onto one expert.
+
+**Term:** *MoE*, *router / gating*, *top-k routing*, *routed vs shared experts*,
+*expert load balancing*, *auxiliary (load-balance) loss*, *active vs total params*.
+
+**Deliverable:** `experiments/b14-moe/notes.md` — dense vs MoE param counts
+(active + total), a memory/throughput table, and a plot or table of per-expert
+token counts showing the router isn't collapsed.
+
+## B15 — GRPO from scratch (and the PPO/DPO contrast)
+
+**Why:** GRPO is the RL algorithm behind DeepSeek-R1-style reasoning training —
+it drops PPO's value network and estimates advantage from a **group** of sampled
+completions. You did PPO (B10, via TRL) and DPO (B11, via TRL); now read a
+hand-written GRPO and place all three on one map.
+
+**Do:**
+
+- Read `trainer/train_grpo.py` (~20 KB, native PyTorch — no `trl`). Identify:
+  group sampling, the group-relative advantage (reward normalized within the
+  group, no critic), the PPO-style clipped ratio, and the KL-to-reference term.
+- Contrast against `trainer/train_ppo.py` (has a value head + GAE) and
+  `trainer/train_dpo.py` (no sampling at all — closed-form on preference pairs).
+  One table: **what each needs** (reward model? value net? online sampling?
+  preference pairs?) and **what each optimizes**.
+- Run a short GRPO job on your B8/SFT-equivalent minimind checkpoint
+  (`python train_grpo.py`). Just enough steps to watch reward rise and KL stay
+  bounded. Note: CISPO is the same script with `loss_type=cispo`.
+
+**Term:** *GRPO*, *group-relative advantage*, *critic-free RL*, *reward
+normalization*, *CISPO*, *clipped surrogate objective*.
+
+**Deliverable:** `experiments/b15-grpo/compare.md` — the PPO vs DPO vs GRPO table
+(inputs + objective + what's removed), plus a GRPO training log (reward up, KL
+controlled).
+
+## B16 — Distillation OR agentic RL (pick one)
+
+**Why:** Two frontier techniques minimind implements that Track B otherwise never
+touches. Pick the one closer to your job target. Both are resume-level.
+
+**Option A — Knowledge distillation** (`trainer/train_distillation.py`):
+
+- Read both modes: **black-box** (student trains on teacher *outputs* / generated
+  text) and **white-box** (student matches teacher *logits* via KL on the soft
+  distribution, temperature-scaled).
+- Distill a larger minimind (or a Track-A Qwen3) teacher into a smaller student.
+  Compare student-alone SFT vs distilled student on held-out prompts.
+- **Term:** *knowledge distillation*, *soft targets / logit matching*,
+  *temperature*, *black-box vs white-box distillation*.
+
+**Option B — Agentic RL / tool use** (`trainer/train_agent.py` +
+`trainer/rollout_engine.py`) — **wires Track B into Track D**:
+
+- Read how multi-turn tool-calling rollouts are generated and scored. Note the
+  rollout engine can drive generation through SGLang
+  (`--rollout_engine sglang --sglang_base_url ... --data_path ../dataset/agent_rl_math.jsonl`).
+- Run a short agentic-RL job on `agent_rl_math.jsonl`. Connect what you see here
+  to the agent loop you build by hand in **Track D** (`agent/curriculum-agent.md`):
+  same tool-call protocol, but here it's the *training* signal, not inference.
+- **Term:** *agentic RL*, *multi-turn rollout*, *tool-call reward*, *rollout
+  engine*.
+
+**Deliverable:** `experiments/b16-<distill|agent>/notes.md` — for A, a
+student-vs-distilled comparison; for B, a rollout trace + one paragraph linking
+it to the Track D agent loop.
+
 ### Track B checkpoint
 
-You have a trained-from-scratch 33M LLM that writes stories, SFT'd, then
-preference-tuned. You can read any pretraining repo and identify every piece.
+You have a trained-from-scratch LLM, taken end to end **twice**: a GPT-2-era 33M
+storyteller (B1–B11: your own tokenizer, attention, training loop, hand-derived
+reward model, then PPO and DPO via TRL), and a **modern Qwen3-aligned** model
+(B13–B16: RMSNorm/RoPE/SwiGLU/GQA, optional MoE, and hand-written GRPO +
+distillation/agentic RL with zero framework wrappers). You can open any
+pretraining or RLHF repo — old or 2025-frontier — and name every piece.
 Write 1 page in `notes/track-b-recap.md`.
 
 ---
