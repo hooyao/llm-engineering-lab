@@ -134,7 +134,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | none (only smoke-test pipeline verified) | A1 — `experiments/a01-mem-budget/budget.py` |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | path designed; 3 submodules added; research report written. **No D-day started.** | D1 — agent loop in Astra (`AgentLoop.SubmitAsync()` → `IAsyncEnumerable<AgentEvent>`, no tools) |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1 done** — submodules checked out; agent loop read end-to-end; `InvokeCoreAsync` made fail-closed (advertise-only); test project + 2 passing tests (`agent/refs/Astra/tests/Astra.Core.Tests/`). Notes: `agent/experiments/d01-agent-loop/notes.md`. | D2 — tool contract: `ITool<TIn,TOut>` + behavioral flags (`IsReadOnly`/`IsConcurrencySafe`/`IsDestructive`) |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -173,6 +173,54 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-15 — Track D Day 1 done (agent loop in Astra)
+
+First Track D day actually executed (prior session only designed the path).
+Environment had no GX10 dependency — Track D is pure C# in the Astra submodule.
+
+What happened:
+
+- **Submodules checked out.** `git submodule update --init --recursive` for
+  `agent/refs/{Astra, claude-code-sourcemap, claude-reviews-claude}` (Astra nests
+  the two CC refs again; pulled too). `dgx-spark-playbooks` left uninit — not
+  needed for Track D.
+- **Read the existing loop.** Astra already had `AgentLoop.SubmitAsync()` from
+  commit `8b080d8` (so Astra's own `progress.md` is stale — pre-rename, still says
+  `MyClaude.*`; real tree is `Astra.Core` / `Astra.Cli` / `Astra.Providers`, no
+  tests dir). D1 became: understand the core, fix one gap, add the missing test.
+- **`InvokeCoreAsync` → fail-closed.** `ToolAIFunction` adapter was using
+  `AIFunction` for *both* advertise (Name/Description/JsonSchema → request, the
+  legitimate provider-abstraction use) *and* a dead-code auto-invoke body. Grep
+  confirmed no `UseFunctionInvocation`/middleware anywhere, so the body never ran
+  — it only exists because `AIFunction.InvokeCoreAsync` is `protected abstract`.
+  Changed it to `=> throw new NotSupportedException(...)`: if a middleware ever
+  wakes that path it crashes loudly instead of silently bypassing the manual
+  dispatch (where D3 partition / D5 permission / D7 compaction will attach).
+  This is *why* Claude Code hand-writes the loop instead of using SDK auto-invoke.
+- **Tests.** New `tests/Astra.Core.Tests/` (xunit), added to `Astra.slnx`, AOT/trim
+  disabled for the test project only. Fakes: `ScriptedChatClient` (stateless,
+  decides output from the last message's role — mirrors a real stateless LLM, not
+  a turn counter), `TextOnlyChatClient`, `FakeTimeTool`. Two `[Fact]`s, **2/2
+  pass**: (1) text-only → terminates in 1 round-trip; (2) tool_use → 2 round-trips,
+  event order `ToolUse→ToolResult→TextDelta`, **last event is TextDelta** (the
+  load-bearing assertion — catches "stopped too early after the tool result").
+- **Source check + notes correction.** Read `query.ts` (`while(true)` at `:307`).
+  The skeleton matches Astra's loop exactly. Corrected an earlier wrong note: the
+  loop-exit signal should NOT be `stop_reason` — Claude Code's own comment
+  (`query.ts:554`) says `stop_reason==='tool_use'` is unreliable; both it and
+  Astra exit on *presence of a tool_use block*. The real missing piece is
+  `max_tokens` truncation recovery (`query.ts:1188-1256`), which Astra lacks.
+
+Astra working tree is dirty (loop edit + new test project + packages). **Not
+committed** — user hasn't asked. When committing: also fix Astra's stale
+`progress.md`, then bump the submodule pointer from this repo.
+
+Deliverables: `agent/experiments/d01-agent-loop/notes.md` (full walk-through +
+source check), `agent/refs/Astra/tests/Astra.Core.Tests/`.
+
+Next: D2 — tool contract (`ITool<TIn,TOut>` + behavioral flags). Astra's current
+`ITool` is the non-generic single-method version; D2 adds `IsReadOnly(input)` etc.
 
 ### 2026-06-13 — Track B extended with minimind modern-stack sequel (B13–B16)
 
