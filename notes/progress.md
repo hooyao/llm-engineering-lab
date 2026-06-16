@@ -134,7 +134,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | none (only smoke-test pipeline verified) | A1 — `experiments/a01-mem-budget/budget.py` |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1 done** — submodules checked out; agent loop read end-to-end; `InvokeCoreAsync` made fail-closed (advertise-only); test project + 2 passing tests (`agent/refs/Astra/tests/Astra.Core.Tests/`). Notes: `agent/experiments/d01-agent-loop/notes.md`. | D2 — tool contract: `ITool<TIn,TOut>` + behavioral flags (`IsReadOnly`/`IsConcurrencySafe`/`IsDestructive`) |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1 done; D2 design exploration done** — D1: agent loop read end-to-end, `InvokeCoreAsync` fail-closed (advertise-only), test project + 2 passing tests. D2: compared CC / Codex / OpenCode / LangGraph permission models, chose **category-based** `ToolAction {Read,Write,Execute,Other}` over CC's 3 bools, fail-closed default via C# default interface method. Notes: `agent/experiments/d0{1,2}-*/notes.md`. | D2 impl — user answers Q1-Q3 (default-iface-method vs base class; does `Classify` take input; demo = bash vs read+write tools), then implement `ITool.Classify` + demo tool(s) + tests |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -173,6 +173,52 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-15 — Track D Day 2 design exploration (tool permission contract)
+
+Compared four real agent permission models to design Astra's tool contract,
+before writing code (tutor mode — user picks the shape).
+
+What happened:
+
+- **User rejected CC's 3-bool flags as crude.** `isReadOnly` / `isConcurrencySafe`
+  / `isDestructive` (Claude Code `Tool.ts:402-406`) can't say "this bash call is
+  an *execute*, that one a *write*" as one classification. User wants a
+  **category** per call — `Read / Write / Execute / Other` — each mapping to a
+  permission level, computed from the call's input.
+- **Comparison captured** in `agent/experiments/d02-tool-contract/notes.md`:
+  - CC = flags-on-tool + `canUseTool` callback (tool describes, host decides);
+    fail-closed defaults via `buildTool` factory. **verified** (read source).
+  - Codex = two orthogonal axes, `approval_policy` × `sandbox_mode`, the latter
+    OS-enforced (Landlock/seccomp/Seatbelt) — *defense in depth*. **unverified**.
+  - OpenCode = per-tool `allow/ask/deny`, bash by command pattern, last-match-wins,
+    fail-*open* + deny-list. **captured prior session**.
+  - LangGraph = no tool flags; runtime `interrupt()` + `Command(resume=)`,
+    resumable HITL — orchestration layer, not a tool contract. **unverified**.
+- **Three takeaways for Astra:** keep input-dependence; separate "what the call
+  is" (D2, tool classifies) from "what we do about it" (D5, engine decides);
+  fail-closed default (follow CC, not OpenCode). Astra's CLAUDE.md mandates
+  fail-closed.
+- **Direction chosen:** `enum ToolAction {Read,Write,Execute,Other}` on `ITool`
+  via **C# default interface method** with `Other` (safest bucket) as the
+  fail-closed default — not a base class (D1 already rejected inheritance for
+  tools). `Classify(arguments)` computes the category from the call.
+
+Three open decisions blocking implementation (user to answer):
+1. default interface method vs abstract base class (and why);
+2. does `Classify` take the weakly-typed input bag (needed to demo
+   `Classify("ls")==Read` vs `Classify("rm -rf")==Execute`), or stay paramless;
+3. demo tools — read+write pair (fixed category) vs single bash (category varies
+   by input, better proves "behavioral flags over inheritance").
+
+Git state: Astra `main` = `c9c6760` (D1 code), **ahead of origin/main by 1,
+not pushed**. Main repo `019998e` (D1 notes+pointer), clean. D2 notes added this
+session (not yet committed). Web-search MCPs (brave / Search-MCP) not mounted this
+session and built-in WebSearch is broken → Codex/LangGraph marked unverified;
+re-verify when a working web path exists.
+
+Next: D2 impl once Q1-Q3 are answered. Also pending: decide whether to push Astra
+to origin/main (currently the local D1 commit only exists on this machine).
 
 ### 2026-06-15 — Track D Day 1 done (agent loop in Astra)
 
