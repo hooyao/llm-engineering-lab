@@ -16,6 +16,15 @@ Fine-tuning and pretraining end to end, sized against real hardware limits:
 
 → `notes/curriculum-v2-execution.md`
 
+**Teaching notes.** Where a day assumed a concept it didn't teach, the gap is
+explained from scratch and committed as `experiments/<day>/teaching-notes.md` —
+concrete worked example first, then the rule, then how it feeds the day's code.
+These record the prerequisites a top-down curriculum can't predict; the first is
+[`experiments/a01-mem-budget/teaching-notes.md`](experiments/a01-mem-budget/teaching-notes.md)
+(what a parameter physically is, how a forward pass runs, and where the training
+bytes go). They are first-class deliverables, not scratch chat — see CLAUDE.md
+§ "Teaching notes."
+
 ## Agent engineering
 
 Building a Claude Code-style agent core **by hand** in C# ([Astra](https://github.com/hooyao/Astra)),

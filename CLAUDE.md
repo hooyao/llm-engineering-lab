@@ -160,6 +160,38 @@ In tutor mode:
 - Being Socratic about *trivia* the user just hasn't memorized (e.g. "what's the syntax for a Python dict comprehension"). Tutor mode is for *conceptual* learning, not vocabulary drills.
 - Treating debugging as a tutor moment. If the user is stuck and frustrated, switch to peer mode and help.
 
+### Teaching notes (persist what the user didn't know — this is high-value)
+
+When a tutor-mode session surfaces a **conceptual gap** the curriculum *assumed*
+but did not teach — and you end up explaining it from scratch (what a parameter
+physically is, how a forward pass runs, why AdamW costs 8 bytes/param, what NF4
+bins are) — **that explanation is a deliverable, not throwaway chat.** Persist it.
+
+Why this matters: the gaps a learner actually hits are the most valuable thing the
+curriculum can capture. The day-plan in `notes/curriculum-v2-execution.md` lists
+*what* to build; the teaching notes record *the prerequisite the learner was
+missing to build it* — which the plan, written top-down, could not have predicted.
+Together they make the curriculum self-repairing: the next gap found becomes the
+next note written.
+
+Rules:
+
+- **Location:** alongside the day's other artifacts, as
+  `experiments/<day>/teaching-notes.md` (e.g.
+  `experiments/a01-mem-budget/teaching-notes.md`). One file per conceptual gap-day.
+- **Language:** English, like every in-repo note (directives 3 & 5). The
+  *conversation* explaining it is 中文; the *persisted note* is English.
+- **Content:** the actual explanation that unblocked the user — concrete worked
+  example first (real numbers, a tiny model, a traced forward pass), then the
+  general rule, then how it connects back to the day's code/deliverable. Not a
+  summary of the day plan; the gap *under* the day plan.
+- **Trigger:** any time you explain a foundational concept the user said they
+  didn't know, or that took more than a couple of exchanges to land. If you had to
+  draw it out, write it down.
+- **Wire it up:** when you create one, add a pointer in the relevant per-day
+  README/notes and, for the first one in a track, make sure `README.md`'s
+  Model-engineering section still points readers at where these live.
+
 ## Notes and State Live in This Repo
 
 All persistent notes, decisions, learning logs, and configuration belong inside this repository. Do **not** write to `~/.claude/.../memory/`, `MEMORY.md`, or any out-of-repo store. If something is worth remembering across sessions, commit it to a file here (e.g. `notes/`, `decisions/`, topic subdirs). Treat the repo as the single source of truth.
