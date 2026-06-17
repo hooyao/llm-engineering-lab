@@ -196,6 +196,12 @@ trades recompute for memory by *not* storing most of them. The rough `×6`
 no-checkpointing factor in the A1 formula accounts for the several intermediate
 tensors each transformer block keeps alive for the backward pass.
 
+> **Why activations must be kept alive at all** — i.e. why a *training* forward pass
+> can't discard each layer's output the way *inference* can — is the backward pass.
+> Each layer's weight gradient needs that layer's own input activation, so every
+> activation must survive from forward until the backward step that consumes it.
+> Full derivation with worked numbers: `backprop-primer.md` (same folder), §§3–7.
+
 ---
 
 ## 7. What you can now do (the A1 deliverable)
