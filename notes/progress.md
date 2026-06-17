@@ -7,7 +7,7 @@
 
 ---
 
-## STATE SNAPSHOT (last updated 2026-06-05)
+## STATE SNAPSHOT (last updated 2026-06-17)
 
 ### Hardware
 
@@ -134,7 +134,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 done** — `experiments/a01-mem-budget/budget.py` (3 functions + 1B/3B/8B × full-SFT/LoRA × ckpt table; `--test` self-checks vs curriculum.md, hand-verified, all within 20%). Plus three concept notes from tutor-mode gaps: `teaching-notes.md` (what a parameter is / forward pass / where bytes go), `backprop-primer.md` (+`.zh`) (why training stores grads+activations). | A2 — full SFT 1B (`experiments/a02-sft-1b/`) |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1 done; D2 done** — D1: agent loop, `InvokeCoreAsync` fail-closed, 2 tests (Astra PR #1, merged). D2: `ITool.Classify → ToolAction {Read,Write,Execute,Other}` (input-dependent, fail-closed default via C# default interface method, replaces CC's 3 bools); `ExecuteAsync` switched to streaming `IAsyncEnumerable<ToolOutput>` (Progress for human / Result for LLM); `BashTool` via `System.Threading.Channels`; 27 tests (Astra PR #2). Notes: `agent/experiments/d0{1,2}-*/notes.md`. | D3 — read/write tool partitioning (concurrent reads, serial writes), using `Classify`. NOTE: 3 interruption scenarios + process-kill are queued for D4 — see d02 notes "OPEN for D4". |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1, D2, D3 done** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` (stable partition, reads coalesce/run concurrent, writes are barriers) + `Channel` fan-in in `AgentLoop`; 36 tests. Notes: `agent/experiments/d0{1,2,3}-*`. **D3 merged: Astra PR #3 → submodule at `9ac91aa`.** | D4 — streaming/control layer: process-tree kill on cancel + bidirectional interruption (3 scenarios in d02 notes "OPEN for D4"). |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -246,6 +246,72 @@ SSH is managed by NVIDIA Sync: key is `C:\Users\yahu2\AppData\Local\NVIDIA
 Corporation\Sync\config\nvsync.key`, Host alias `GX10`. Git Bash doesn't parse the
 spaced-path `Include` in `~/.ssh/config`, so the alias doesn't resolve — connect
 explicitly with `ssh -i "<nvsync.key path>" hooyao@192.168.1.200`.
+
+### 2026-06-17 (later) — Track D Day 3 done (tool orchestration, Astra PR #3 merged)
+
+D3 implemented in the Astra submodule. Tutor mode: the user supplied the framing
+("this is compiler instruction reordering") and reviewed; I wrote the code.
+
+**What shipped (Astra working tree, detached HEAD at `0488676` = D2):**
+- `src/Astra.Core/ToolBatching.cs` (NEW) — pure `Partition(calls, classify) ->
+  List<ToolBatch>`. Stable partition (coalesce adjacent reads), NOT a sort.
+  Concurrency-safety derived from D2: `safe == (Classify == ToolAction.Read)`.
+  `Write/Execute/Other` are barriers (each runs alone). Fail-closed: unknown tool
+  -> `Other` -> barrier.
+- `src/Astra.Core/AgentLoop.cs` (REWRITE of the tool-dispatch section) — D2's
+  serial `foreach (call in toolCalls)` replaced by `foreach (batch in batches)`.
+  Concurrent batch = N producer tasks fan in through one `Channel<AgentEvent>`,
+  single-reader iterator drains+yields (keeps `yield` out of try/catch, CS1626).
+  Bounded by `SemaphoreSlim(MaxConcurrentTools=10)`. Serial batch = same path,
+  width 1. Results keyed by `CallId` into a `ConcurrentDictionary`, fed back to
+  `_messages` in the model's ORIGINAL call order (not completion order).
+- Tests: `ToolBatchingTests.cs` (7) + `AgentLoopOrchestrationTests.cs` (3).
+  **36/36 pass** (D1 x2, D2 x25, D3 x9). Load-bearing ones:
+  `Partition_ReadWriteRead_DoesNotHoistAcrossBarrier` (the trap: write splits two
+  reads into 3 batches) and `TwoReads_RunConcurrently` (proves real overlap via a
+  rendezvous latch — serial execution would time out, not silently pass).
+- `agent/experiments/d03-tool-orchestration/teaching-notes.md` — the hazard /
+  instruction-scheduling derivation (RAR is the only safe reorder; no alias
+  analysis over the filesystem -> every write is a fence; emission order is
+  program order -> stable partition, never sort). This is the D3 conceptual core.
+- `agent/experiments/d03-tool-orchestration/notes.md` — design/impl record.
+- Astra `CLAUDE.md` — orchestration section updated from "will partition (not yet
+  implemented)" to the implemented contract; assembly-pipeline marked D15.
+
+**Scope decisions (user-confirmed):**
+- Assembly-sort (built-in prefix / MCP suffix for prompt-cache) DEFERRED to D15 —
+  no MCP tools exist yet, nothing to sort. Pointer left in d03 notes + Astra
+  CLAUDE.md. D3 = runtime tool-call partition only.
+- `ToolOutput` Progress/Result typing unchanged; D3 only fans in N such streams.
+
+**Committed:** Astra PR #3 squash-merged to main (`9ac91aa`), branch deleted;
+parent repo submodule pointer bumped `0488676` -> `9ac91aa` together with the
+`agent/experiments/d03-*` notes and this progress.md update. The pre-existing
+1-line `BashTool.cs` D4-kill TODO comment went in with the D3 commit (harmless,
+marks the D4 spot). Flow was identical to D1 #1 / D2 #2; merge needed `--admin`
+(base-branch policy gate, no CI checks configured) — same as the prior days.
+
+**Then D4** — streaming/control layer. The queue is already written in
+`agent/experiments/d02-tool-contract/notes.md` under "OPEN for D4": (a) process-
+TREE kill on cancel (`process.Kill(true)`; the `BashTool.cs` TODO comment marks
+the exact spot — today's ct-threading makes the cancel path reachable but it still
+only stops *watching*, not the process), (b) bidirectional interruption — 3
+scenarios (mid-turn user input injection, "stop" mid-tool, agent-autonomous
+kill-on-error), all needing the one-directional loop to gain a back-channel
+(CancellationToken + a Channel/queue). Also: `contextModifier` (cd-changes-cwd)
+NOT built — when a stateful tool appears, its modifier applies ONLY on the serial
+path, never concurrent (see d03 notes "Open / deferred").
+
+**Env notes (D3 commit session):**
+- Edit/Write worked fine this session; the D2-session multi-line parse failures
+  did not recur. (If they do: fall back to `python - <<EOF` via Bash.)
+- **CRLF gotcha when committing in Astra:** `core.autocrlf=true` + `safecrlf=true`
+  + `.gitattributes eol=lf` means a file edited on Windows (CRLF in the working
+  tree) aborts `git add` with "CRLF would be replaced by LF". Fix: `git add
+  --renormalize <file>` to apply the repo's LF normalization, then commit. Hit
+  this on `CLAUDE.md`; expect it on any Windows-edited tracked text file in Astra.
+- Astra merge needs `gh pr merge N --squash --admin` — base-branch policy gate
+  blocks plain merge and there are no CI checks to satisfy.
 
 ### 2026-06-17 — Track A Day 1 done (memory budget calculator) + two teaching notes
 
