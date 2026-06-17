@@ -114,6 +114,11 @@ Driver `580.159.03`, CUDA build `13.0`, `nvcr.io/nvidia/pytorch:25.11-py3` conta
 **Reading:**
 
 - **97.3 TFLOPS BF16 sustained at N=16384, ≈ 78 % of the 125 TFLOPS nameplate.** Higher than the ~60 TFLOPS Carmack-style independent figure typically cited, likely from a combination of: newer driver (580.x is months past first-release), the ASUS chassis's `1.6x more efficient thermal coverage` versus the NVIDIA Founders Edition, and pure-GEMM workloads being the easiest case to saturate tensor cores.
+- **Where our ~95 sits vs the community (verified 2026-06-18).** Community DGX Spark BF16/FP16 "TFLOPS" numbers span ~20× and must NOT be compared blind — they fall in three tiers:
+  - **mmapeak (raw MMA instruction peak): ~213 TFLOPS** — alan.dang on NVIDIA forum t/351993. Registers-only, no memory traffic, no cuBLAS. This is an instruction-level ceiling, NOT a real GEMM. Do not compare our number to this.
+  - **Real cuBLAS / PyTorch square-GEMM (our method): ~45–96 TFLOPS** — the only tier comparable to ours. Carmack / Awni Hannun ~60 BF16 (Oct-2025 launch, SW Power Cap held the box at ~100 W); GuigsEvt ~45 FP16 default stack, "~1.5× with rebuilt stack" → ~67. All on the low side, and each low number has a documented cause (early firmware, power cap, or default software stack).
+  - **Broken / default-stack GEMM: ~11–12 TFLOPS** — Ross Ingram's starting point before enabling Blackwell kernels; his whole writeup is the climb out of it. A misconfiguration value, not a hardware figure.
+  - **Conclusion:** our 95–96 is at the *top* of the real-GEMM tier, and legitimately so — we run the nvcr `26.04` container (torch 2.12 nv-build, correct Blackwell kernels) on mature firmware and pick the best size. That is exactly the "fixed" state Ross Ingram was chasing. The widely-quoted ~60 headline is an early-firmware + power-capped + default-stack artifact, not the ceiling of a correctly-configured GB10.
 - **No thermal throttling at this duration / load.** Headroom to throttle threshold ~8-10 °C. Clocks stay at P0.
 - **Power efficiency ~1.09 TFLOPS/W (GPU die)** -- comparable to H100 SXM and ahead of A100 SXM on the same metric. Real chassis draw (CPU, DRAM controller, NIC, fan) brings it to roughly 130 W on this unit, well below the 240 W adapter ceiling.
 - **GEMM size matters.** Below N=8192 the per-call cuBLAS overhead is non-trivial and sustained throughput drops to ~86 TFLOPS. Real LLM workloads with small effective batches (e.g. LoRA 3B at batch 4 / seq 1024) hit the smaller-size regime AND don't issue continuous GEMMs; observed GPU die power for that case was only ~44 W. To actually saturate this GPU, use large effective batch × long seq, or train ≥ 14B models.
@@ -307,9 +312,38 @@ https://dredyson.com/how-i-fixed-dgx-spark-overheating-shutdowns-...)
 reports clock throttling fixes it. The mechanism: boost clocks pull
 transient current that the chassis PD subsystem can't sustain, EC trips.
 
-**No authoritative max-clock value exists.** Try progressively lower
-ceilings until stable; do not blindly pick 2150 MHz just because
-ChatGPT/Gemini suggested it.
+**The 2150 MHz value now has a real community source** (found 2026-06-18),
+though still not an official NVIDIA one:
+- `github.com/eugr/spark-vllm-docker` README → Known Issues: firmware "may
+  cause sudden shutdown event ... during heavy inference"; workaround
+  `sudo nvidia-smi -lgc 200,2150`; **lock only survives until reboot**.
+- NVIDIA forum thread t/373251 ("DGX Spark (GB10) reproducibly hard
+  powers-off under GPU load"). Real symptom, but the "PMIC hard cutoff /
+  SoC spikes 100°C in microseconds / engineering-consensus physical limit"
+  narrative that circulates with it is **embellished** — no NVIDIA staff in
+  the thread, "PMIC" never appears, and the actually-confirmed fixes were
+  repaste (dry/brittle TIM) + case-off + 120 mm fan. Clamping is one
+  workaround, not a proven floor.
+
+**2150 is a sane starting clamp, not a magic number.** Still descend
+progressively to the lowest ceiling that holds; 2150 is just the most-cited
+community starting point. NOTE the source says "default 2411"; **this ASUS
+unit's max is 3003** (Applications Clock 2418), so the source's numbers are
+for a different SKU envelope — don't import them literally.
+
+**Measured cost of the 2150 clamp on this unit (2026-06-18, container 26.04,
+`bf16_peak.py`):** clamp costs only ~1% BF16 throughput at each tier's best
+size — **96.8 TFLOPS uncapped (N=8192) → 95.7 capped (N=12288)** — for ~14%
+less GPU power (94 → 81 W) and zero clock jitter (loaded gclk pinned at
+2132 MHz vs 2366 MHz drifting under SW Power Cap). Crucially, **even
+uncapped the GPU self-limited to 2366 MHz under sustained BF16 GEMM — it
+never approached the 3003 cap** — so the clamp removes ~230 MHz of top
+range the chip wasn't using at full load anyway. That is why the clamp is
+near-free. Caveat: this measures the *throughput cost* of clamping, NOT
+whether clamping prevents shutdown — the thread's stronger root-cause
+candidate is SoC/CPU-side heat (GPU 79 °C while CPU ~96 °C), which a GPU
+clock cap only relieves indirectly. No shutdown has ever been observed on
+this unit.
 
 Procedure:
 

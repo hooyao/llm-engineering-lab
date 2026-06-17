@@ -174,6 +174,79 @@ When the user is ready to continue, the natural next steps are:
 
 ## LOG (append new entries at the top)
 
+### 2026-06-18 — sourced the 2150 MHz clamp + measured what capping costs
+
+Two-part follow-up to the 2026-06-05 emergency playbook, which had recorded
+`nvidia-smi -lgc 200,2150` as a community mitigation but flagged the 2150 value
+as "NO SOURCE — no authoritative number."
+
+**Part 3 (added later same day) — sustained sweep + community cross-check.**
+Re-capped to 2150 and ran a 60s/size sustained sweep (`--sizes 4096,8192,12288,
+16384 --duration 60`). Clock pinned at 2132 MHz all 4 minutes, zero jitter, no
+shutdown. Sweet spot is **N=12288 → 95.7 TFLOPS** (4096=83.5, 8192=93.0,
+16384=94.7 — 16384 drops back as it goes LPDDR5x-bandwidth-bound, p99 jumps
+39→106 ms). Long-run 8192 = 93.0 vs short-run 92.9 → **the 2150 clamp has zero
+sustained-duration decay**, which is its real benefit (kills the SW Power Cap
+jitter). Net: capped best (95.7 @ 12288) is **98.9% of uncapped best** (96.8 @
+8192) — the clamp is near-free.
+Community cross-check (verified, see hardware-gx10.md): DGX Spark BF16 numbers
+span 3 non-comparable tiers — mmapeak ~213 (raw MMA, not real GEMM), real
+cuBLAS GEMM ~45–96 (our tier; Carmack ~60 is early-firmware+power-capped),
+broken-stack ~11. **Our 95–96 is the top of the real-GEMM tier and correct**
+(26.04 container = right Blackwell kernels + mature firmware + best size).
+Recorded both as this unit's BF16 characteristic + the clamp best-practice in
+`notes/hardware-gx10.md`. Clamp best-practice framing: 2150 is **near-free
+stability insurance (~1% throughput), NOT the cause of the 95 number** — don't
+conflate them. Machine reset to default (3003 max) after.
+
+**Part 1 — found the source.** The 2150 MHz number traces to two real,
+verified community artifacts (not official NVIDIA docs):
+- `github.com/eugr/spark-vllm-docker` README → Known Issues (2026-03-17 entry):
+  firmware "may cause sudden shutdown event on one or both Sparks during heavy
+  inference"; workaround `sudo nvidia-smi -lgc 200,2150`; notes default 2411,
+  boost 3000; **the lock only survives until reboot**.
+- NVIDIA forum thread "DGX Spark (GB10) reproducibly hard powers-off under GPU
+  load — fully updated, zero crash capture" (t/373251). Real symptom (hard
+  power-off ~60s into GPU load, no pstore/vmcore/Xid). BUT: the elaborate
+  "PMIC hard cutoff / SoC spikes 100°C in microseconds / engineering consensus
+  fixed 2150 as the physical limit" narrative the user was shown is **embellished**
+  — no NVIDIA staff in the thread (all users), "PMIC" never appears, SoC>100°C
+  is one user's speculation, and the actually-confirmed fixes were repaste
+  (dry/brittle TIM) + case-off + 120mm fan. Clamping is one workaround, not a
+  proven physical limit. Note also: that thread says default boost 2411; **this
+  ASUS unit's max is 3003** (confirmed again today), so even the "2411 default"
+  in the source doesn't match this SKU.
+
+**Part 2 — measured the cost of the clamp.** Ran `bf16_peak.py --sizes 8192
+--iters 200` (single size, safe profile — sustained `--duration` is the exact
+shutdown trigger, deliberately avoided) capped vs uncapped, container 26.04:
+
+| Round | clock policy | loaded gclk | sustained TFLOPS | temp | GPU pwr |
+|---|---|---|---|---|---|
+| A | `-lgc 200,2150` | **2138 MHz** (locked, verified) | **92.9** | 51 °C | 71 W |
+| B | `-rgc` default | **2366 MHz** (never hit 3003 cap) | **96.8** | 56 °C | 94 W |
+
+- **Cost of the 2150 clamp ≈ 4% BF16 throughput** (96.8 → 92.9) for ~24% less
+  GPU power (94 → 71 W) and 5 °C cooler. Cheap insurance if shutdowns appear.
+- Key observation: **even uncapped, the GPU self-limited to 2366 MHz** under
+  BF16 GEMM — nowhere near the 3003 hw cap. Consistent with the SW Power Cap /
+  shared-140W-SoC-envelope story from 2026-06-05. The clamp removes the top
+  ~230 MHz of a range the chip wasn't using at full load anyway, which is why
+  the throughput hit is small.
+- **Caveat carried forward:** this measures the *throughput cost* of the clamp,
+  NOT whether the clamp prevents shutdown. The forum thread's stronger root-cause
+  candidate is SoC/CPU-side heat (GPU 79°C while CPU ~96°C); lowering GPU clock
+  only reduces total SoC power indirectly. Unverified on this unit — no shutdown
+  has ever been observed here (now 2 weeks uptime across sessions).
+- Machine left in clean state: `-rgc` applied, max back to 3003, idle 208 MHz.
+
+Connection gotcha for next session: `ssh hooyao@192.168.1.200` from this Windows
+laptop fails (`Permission denied`) — the default `~/.ssh/` has **no private key**.
+SSH is managed by NVIDIA Sync: key is `C:\Users\yahu2\AppData\Local\NVIDIA
+Corporation\Sync\config\nvsync.key`, Host alias `GX10`. Git Bash doesn't parse the
+spaced-path `Include` in `~/.ssh/config`, so the alias doesn't resolve — connect
+explicitly with `ssh -i "<nvsync.key path>" hooyao@192.168.1.200`.
+
 ### 2026-06-17 — Track A Day 1 done (memory budget calculator) + two teaching notes
 
 First model-side curriculum day executed. This machine (Windows laptop) is now the
