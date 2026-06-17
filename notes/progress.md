@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | none (only smoke-test pipeline verified) | A1 — `experiments/a01-mem-budget/budget.py` |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 done** — `experiments/a01-mem-budget/budget.py` (3 functions + 1B/3B/8B × full-SFT/LoRA × ckpt table; `--test` self-checks vs curriculum.md, hand-verified, all within 20%). Plus three concept notes from tutor-mode gaps: `teaching-notes.md` (what a parameter is / forward pass / where bytes go), `backprop-primer.md` (+`.zh`) (why training stores grads+activations). | A2 — full SFT 1B (`experiments/a02-sft-1b/`) |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1 done; D2 done** — D1: agent loop, `InvokeCoreAsync` fail-closed, 2 tests (Astra PR #1, merged). D2: `ITool.Classify → ToolAction {Read,Write,Execute,Other}` (input-dependent, fail-closed default via C# default interface method, replaces CC's 3 bools); `ExecuteAsync` switched to streaming `IAsyncEnumerable<ToolOutput>` (Progress for human / Result for LLM); `BashTool` via `System.Threading.Channels`; 27 tests (Astra PR #2). Notes: `agent/experiments/d0{1,2}-*/notes.md`. | D3 — read/write tool partitioning (concurrent reads, serial writes), using `Classify`. NOTE: 3 interruption scenarios + process-kill are queued for D4 — see d02 notes "OPEN for D4". |
@@ -173,6 +173,50 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-17 — Track A Day 1 done (memory budget calculator) + two teaching notes
+
+First model-side curriculum day executed. This machine (Windows laptop) is now the
+**model-side** workstation; Track D (agent/Astra) is being done on a *separate*
+machine — the two legs share this repo but don't touch each other's files (today's
+A1 work and the same-day D2 push from the other box rebased cleanly).
+
+Mode: **hybrid** (user's call) — tutor on conceptual days (A1/A6/A9), peer on the
+mechanical run-and-read days. A1 is the one theory day, so tutor. It surfaced two
+prerequisite gaps the day-plan assumed but didn't teach; both were explained from
+scratch and persisted (this is the "teaching notes" practice now in CLAUDE.md):
+
+- `experiments/a01-mem-budget/teaching-notes.md` — what a parameter physically is
+  (a number in a bag of numbers), a 9-param toy model with a traced forward pass,
+  matrix form = the GEMM the GB10 runs, scaling to Llama-3B, then the bytes/param
+  bridge. Corrected in-place: full-SFT Adam is **16 B/param** (adds fp32 master),
+  not the 12 used to build intuition.
+- `experiments/a01-mem-budget/backprop-primer.md` (+ `.zh.md`) — the user had
+  forgotten backprop entirely; this is a self-contained primer (chain rule → fully
+  worked 2-layer backward with numbers → two-kinds-of-gradient → per-layer
+  activation rule → tie-back to grad/activation memory → 30-line numpy) to read
+  alongside a YouTube lecture as offline study. The `.zh` is a one-off Chinese
+  exception the user explicitly requested; ML/systems terms stay English.
+
+Deliverable: `budget.py` — `param_bytes` / `optimizer_bytes` (+ `training_state_bytes`,
+`activation_bytes`) + a 1B/3B/8B × full-SFT/LoRA × checkpointing table with
+comfortable/marginal/OOM verdicts, and a `--test` mode asserting against
+`notes/curriculum.md` worked examples. Pure stdlib, no GPU. **GX10 was offline
+(ssh timeout) when written, so `--test` was hand-verified** (3B full SFT 51.2 vs 51,
+8B 128 vs 128, 14B LoRA 29.6 vs 30, 32B FP8 LoRA 32.8 vs 33 — all <2% off). Re-run
+`python budget.py --test` on the box to confirm. Verdicts in `notes.md`: 1B/3B full
+SFT + all LoRA comfortable; 8B full SFT marginal (needs 8-bit Adam + ckpt); ≥14B
+full-SFT will OOM (LoRA/QLoRA/FP8 only).
+
+Also this session: pinned the **no-translate rule** into CLAUDE.md directive 2
+(never render ML/systems terms — bias/weight/gradient/... — in Chinese, the user
+finds the renderings harder to read), and added a **"Teaching notes" subsection**
+under tutor mode making these gap-notes a first-class, committed deliverable, with
+a README pointer. Commits: `3bf63f1` (teaching-notes + practice), `654886b`
+(backprop primer + no-translate), plus this session's budget.py/notes commit.
+
+Next: A2 — first full-parameter SFT on Llama-3.2-1B (`experiments/a02-sft-1b/`),
+peer mode. Needs the GX10 back online.
 
 ### 2026-06-17 — Track D Day 2 done (tool contract + streaming, Astra PR #2 merged)
 

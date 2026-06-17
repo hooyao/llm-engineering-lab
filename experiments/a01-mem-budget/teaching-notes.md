@@ -157,6 +157,16 @@ and that still excludes activations (the intermediate `h` values from §3; see �
 > For sizing memory you only need to know that AdamW keeps two FP32 books (`m`, `v`)
 > per parameter, 4 bytes each.
 
+> **12 vs 16 — read this once.** The 12 B/param above is the *pure-bf16* recipe and
+> is the right number to build the intuition on. **Production full SFT actually uses
+> 16 B/param** (mixed-precision Adam): it adds a **fp32 master weight** (+4 B) on top
+> of the bf16 weight. Reason: bf16 has only ~7 bits of mantissa, so many `lr·grad`
+> updates are too small to survive being added to a bf16 weight — keep an fp32 master
+> copy, accumulate the update there, cast back to bf16 for the next forward. So the
+> real bill is `2 weight + 2 grad + 4 master + 4 m + 4 v = 16`, and a 3B full SFT is
+> `3.2e9 × 16 ≈ 51 GB`, not 36. `budget.py` and `notes/curriculum.md` use 16; this
+> note teaches with 12 then corrects to 16 here so both numbers make sense.
+
 ### dtype is the per-number cost knob
 
 | dtype | bytes/number | used for |
