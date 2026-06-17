@@ -134,7 +134,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | none (only smoke-test pipeline verified) | A1 — `experiments/a01-mem-budget/budget.py` |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1 done; D2 design exploration done** — D1: agent loop read end-to-end, `InvokeCoreAsync` fail-closed (advertise-only), test project + 2 passing tests. D2: compared CC / Codex / OpenCode / LangGraph permission models, chose **category-based** `ToolAction {Read,Write,Execute,Other}` over CC's 3 bools, fail-closed default via C# default interface method. Notes: `agent/experiments/d0{1,2}-*/notes.md`. | D2 impl — user answers Q1-Q3 (default-iface-method vs base class; does `Classify` take input; demo = bash vs read+write tools), then implement `ITool.Classify` + demo tool(s) + tests |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1 done; D2 done** — D1: agent loop, `InvokeCoreAsync` fail-closed, 2 tests (Astra PR #1, merged). D2: `ITool.Classify → ToolAction {Read,Write,Execute,Other}` (input-dependent, fail-closed default via C# default interface method, replaces CC's 3 bools); `ExecuteAsync` switched to streaming `IAsyncEnumerable<ToolOutput>` (Progress for human / Result for LLM); `BashTool` via `System.Threading.Channels`; 27 tests (Astra PR #2). Notes: `agent/experiments/d0{1,2}-*/notes.md`. | D3 — read/write tool partitioning (concurrent reads, serial writes), using `Classify`. NOTE: 3 interruption scenarios + process-kill are queued for D4 — see d02 notes "OPEN for D4". |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -173,6 +173,47 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-17 — Track D Day 2 done (tool contract + streaming, Astra PR #2 merged)
+
+Implemented the D2 contract decided in the prior design exploration, then —
+prompted by user review — also brought streaming forward from D4.
+
+What shipped (Astra `0488676`, squash-merged PR #2):
+- **`ITool.Classify(arguments) → ToolAction {Read,Write,Execute,Other}`.**
+  Input-dependent (`BashTool`: "ls" → Read, "rm -rf" → Execute), fail-closed
+  default `Other` via a **C# default interface method** (not a base class — D1
+  rejected tool inheritance). Replaces the crude 3-bool design. Key lesson
+  (verified against CC source `bashPermissions.ts`/`readOnlyCommandValidation.ts`):
+  CC keys bash approval on the command **string** (exact/prefix), so a small arg
+  change misses the saved rule and re-prompts — the failure that drives users to
+  bypass permissions. Classifying by behavior **class** lets a host approve "all
+  reads" once. Two-layer split recorded for the permission day: class decides
+  bulk, a deny-list snipes per-command exceptions.
+- **Streaming `ExecuteAsync` → `IAsyncEnumerable<ToolOutput>`** with
+  `ToolOutput.Progress` (live, for the human) vs `ToolOutput.Result` (the one
+  complete tool_result, for the LLM; need not equal the Progress concatenation).
+  Was `ValueTask<string>` (blocks until exit). `BashTool` bridges `Process`
+  output events into the stream via `System.Threading.Channels`. `AgentLoop`
+  drives the tool enumerator by hand (yield can't sit in try/catch, CS1626) and
+  emits `AgentEvent.ToolProgress`. 27 tests pass.
+- Astra `CLAUDE.md` Tool System section synced from the stale generic-3-bool
+  draft to the implemented contract.
+
+**OPEN for D4 (do not forget) — 3 interruption scenarios the user raised**, full
+detail in `agent/experiments/d02-tool-contract/notes.md` ("OPEN for D4"):
+1. mid-turn user wants to add input (loop is one-directional; needs concurrent
+   input-listener + back-channel);
+2. user says "stop" mid-tool (streaming made the `ct` hook reachable, BUT
+   cancelling the read does NOT kill the child process — known hole);
+3. agent autonomously watches Progress and kills on error (`process.Kill(true)`
+   for the tree + a policy middleware on the Progress stream).
+The common thread: turn the one-directional loop into one intervenable in both
+directions, carried by `CancellationToken` + a back-channel. This is D4.
+
+Git: Astra PRs #1 (D1) and #2 (D2) both squash-merged to Astra main by the user;
+local PR branches deleted, main fast-forwarded to `0488676`. Main-repo submodule
+pointer bumped to `0488676`.
 
 ### 2026-06-15 — Track D Day 2 design exploration (tool permission contract)
 
