@@ -134,7 +134,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 done** — `experiments/a01-mem-budget/budget.py` (3 functions + 1B/3B/8B × full-SFT/LoRA × ckpt table; `--test` self-checks vs curriculum.md, hand-verified, all within 20%). Plus three concept notes from tutor-mode gaps: `teaching-notes.md` (what a parameter is / forward pass / where bytes go), `backprop-primer.md` (+`.zh`) (why training stores grads+activations). | A2 — full SFT 1B (`experiments/a02-sft-1b/`) |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1, D2, D3 done** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` (stable partition, reads coalesce/run concurrent, writes are barriers) + `Channel` fan-in in `AgentLoop`; 36 tests. Notes: `agent/experiments/d0{1,2,3}-*`. **D3 merged: Astra PR #3 → submodule at `9ac91aa`.** | D4 — streaming/control layer: process-tree kill on cancel + bidirectional interruption (3 scenarios in d02 notes "OPEN for D4"). |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D4 done** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` (stable partition, reads coalesce/run concurrent, writes are barriers) + `Channel` fan-in in `AgentLoop`. D4: control layer — cancel kills the child process **tree** then reaps (`try/finally` + `KillTreeAsync` in `BashTool`); closes the "stop = I stop watching" hole. Notes: `agent/experiments/d0{1,2,3,4}-*`. **Astra submodule at `0117e60` (D4 PR #4 merged). ⚠️ D4 tree-kill test only runs on Linux — see GATE in d04 notes; Windows-green 38/38 but core assertion Linux-pending.** | D5 — permission pipeline (layered, fail-closed) per `curriculum-agent.md`; OR finish the deferred D4 control-plane (scenario 1 input-injection / scenario 3 policy). |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -173,6 +173,61 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-18 — Track D Day 4 done (control layer: process-tree kill on cancel, Astra PR #4 merged)
+
+curriculum's nominal D4 (streaming + tool_use) was already pulled forward into
+D2, so the real D4 work is the **control layer** the d02 notes parked under "OPEN
+for D4". This day did its foundational piece: making "stop" actually stop the
+work. Tutor mode — the user reasoned out both facts (Dispose sends no signal;
+the child is a shell so the work is in its descendants) and chose the finally-
+over-ct.Register design; I wrote the code.
+
+**The hole closed:** pre-D4, `ct` was wired only to *reading* the child output.
+On cancel, OCE unwound and `using var process` ran `Dispose()` — which frees the
+handle and **sends no signal**, so the spawned `sh -c "..."` + npm/node/...
+descendants were reparented to init and kept running. "Stop" = "I stop watching".
+
+**What shipped (Astra `0117e60`, squash-merged PR #4):**
+- `src/Astra.Core/BashTool.cs` — drain + WaitForExit now wrapped in
+  `try { } finally { await KillTreeAsync(process); }`. The finally fires on every
+  exit path: normal completion (no-op), cancellation (OCE), AND consumer break
+  (`await foreach` calls the iterator's DisposeAsync, which runs the finally).
+  try/finally with NO catch is legal around `yield` (CS1626 bans only catch).
+  Chosen over `ct.Register` (which would risk Kill on a disposed Process + need
+  its own registration lifetime). `KillTreeAsync` = `Kill(entireProcessTree:true)`
+  (the child is the SHELL; a bare Kill orphans npm) + swallow TOCTOU
+  InvalidOperationException + reap with `WaitForExitAsync(CancellationToken.None)`
+  (caller's token is already cancelled; passing it would return before the tree
+  finished dying).
+- `tests/Astra.Core.Tests/BashToolCancellationTests.cs` (+2): GrandchildStopsTicking
+  (by-construction — a backgrounded grandchild subshell stops appending to a
+  marker file after cancel; a bare-Kill impl leaves it ticking; a timing test
+  could not catch the original bug. POSIX-only, early-returns on Windows) +
+  ThrowsPromptly (cross-platform cancel-path guard). **38/38 pass on Windows.**
+- `agent/experiments/d04-control-layer/{teaching-notes,notes}.md` — the
+  Dispose-sends-no-signal / shell-wraps-the-work / finally-not-Register / two-races
+  derivation, + scope and the gate below.
+
+**⚠️ VERIFICATION GATE (D4 is "implemented, Windows-green, Linux-pending"):**
+the tree-kill assertion only executes on Linux/macOS (POSIX sh subshell
+semantics; Windows uses cmd.exe and early-returns). This session had NO reachable
+POSIX box — GX10 `192.168.1.200` SSH **timed out**, no WSL distro, no Docker
+daemon. Before claiming D4 verified, on the GX10 once reachable:
+```
+cd <Astra checkout> && dotnet test Astra.slnx --filter "FullyQualifiedName~BashToolCancellation"
+```
+Expect GrandchildStopsTicking to actually run (not early-return) and pass. Then
+record the green result here and drop the gate.
+
+**Deferred (rest of the control layer):** scenario 1 (inject user input mid-turn
+— back-channel + soft/hard restart + split AgentApp's serial foreach→ReadLine),
+scenario 3 policy half (a middleware watching Progress that decides cancel+kill —
+the mechanism it calls is now done), and `contextModifier` (cd-changes-cwd, serial
+path only). All in d04 notes "Open / deferred".
+
+**Next:** D5 — permission pipeline (layered, fail-closed) per curriculum-agent.md;
+OR circle back to finish the deferred D4 control-plane. User's call.
 
 ### 2026-06-18 — sourced the 2150 MHz clamp + measured what capping costs
 
