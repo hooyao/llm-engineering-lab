@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 done**. A1: `experiments/a01-mem-budget/budget.py` (memory calculator, `--test` vs curriculum.md) + concept notes (`teaching-notes.md`, `backprop-primer.md`+`.zh`). A2: `experiments/a02-sft-1b/` first full-param SFT — Llama-3.2-1B, 500 alpaca ex, 1 epoch, 125 steps/83s, loss 1.72→1.35, **peak 13.84 GB**. Key finding: HF `Trainer(bf16=True)` is **12 B/param (no fp32 master)**, not 16 — measured matches to 0.2%; A1 notes corrected. Model saved `~/runs/a02-sft-1b/`. | A3 — gen quality before/after SFT (`experiments/a03-eval-1b/`) |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 + A3 done**. A1: `budget.py` memory calculator + concept notes. A2: first full-param SFT (Llama-3.2-1B, 500 ex, peak 13.84 GB → corrects A1 to 12 B/param). A3 (also the A2 payoff): `experiments/a03-eval-1b/` before/after generation diff, `results.md` (10 pairs) — SFT visibly drops preamble / is more on-task, knowledge unchanged (#5 capital-of-France identical). | A4 — gradient accumulation (`experiments/a04-grad-accum/`) |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1, D2, D3 done** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` (stable partition, reads coalesce/run concurrent, writes are barriers) + `Channel` fan-in in `AgentLoop`; 36 tests. Notes: `agent/experiments/d0{1,2,3}-*`. **D3 merged: Astra PR #3 → submodule at `9ac91aa`.** | D4 — streaming/control layer: process-tree kill on cancel + bidirectional interruption (3 scenarios in d02 notes "OPEN for D4"). |
@@ -173,6 +173,32 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-17 — A3 done as the A2 payoff; "visible reward per day" rule added
+
+A2 was technically complete (a fine-tuned checkpoint) but the user pushed back hard
+and correctly: they learned the loop yet never *saw* the model behave differently,
+so the day failed as teaching — "no reward, I can't keep learning." Fixed two ways:
+
+1. **Ran A3 immediately as the A2 payoff** — `experiments/a03-eval-1b/compare.py`:
+   base Llama-3.2-1B-Instruct vs the A2 checkpoint, same 10 prompts, greedy. The
+   diff is visible and instructive: SFT drops the "Here are…" preamble, is more
+   on-task/concise, and **knowledge is unchanged** (#5 capital-of-France byte-
+   identical) — the textbook "SFT changes format/style not facts." `results.md`
+   (10 pairs) committed; saved on box at `~/runs/a03-eval/results.md`.
+   (One gotcha: a too-narrow monitor grep made the live output look empty; the
+   generations were there all along — check `~/runs/...` host path, not `/runs/...`.)
+
+2. **CLAUDE.md: new hard rule "Every day must pay off in something the learner can
+   SEE."** Plus a teaching gap surfaced about curriculum design: the *structure*
+   (every day has a payoff section) is fixed, but the *specific payoff is decided
+   live with the learner*, not pre-written — the A2 payoff was right because it
+   was generated in response to the user, which a static syllabus can't do. Rule
+   text says exactly this.
+
+Next: A4 — gradient accumulation (`experiments/a04-grad-accum/`). Its payoff (to be
+co-designed on the day) is likely "three configs, same effective batch → same loss,
+different memory/speed" shown as a table the user reads themselves.
 
 ### 2026-06-17 — Track A Day 2 done (first full-parameter SFT) + A1 memory correction
 

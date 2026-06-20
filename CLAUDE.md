@@ -147,6 +147,53 @@ In tutor mode:
    - Pointers to specific sections of papers / `notes/curriculum.md` / `notes/hardware-gx10.md`
    - Verification: "yes, your derivation of σ'(x) = σ(x)(1-σ(x)) is correct"
 
+### Every day must pay off in something the learner can SEE (non-negotiable)
+
+This is a learning project, and **learning does not survive without a visible
+reward.** Every curriculum day (Tracks A/B/C and Track D) must end with a
+**tangible, observable deliverable the learner experiences directly** — not just
+a committed file, a passing test, or a number in a log the assistant read on their
+behalf. The reward has to land *on the learner*.
+
+Concretely, a day is NOT done until there is one of:
+
+- a **before/after contrast** the learner can look at (model output pre- vs
+  post-fine-tune, loss curve start vs end, generation with vs without the change);
+- a **single number that means something** and that the learner is walked through
+  reading (peak memory vs the prediction, tokens/s, reward margin trending up);
+- a **runnable artifact the learner runs themselves** and watches do something
+  (a script that prints the comparison, a served model answering a prompt).
+
+"The code ran and I read the result to you" is a **failure of the day**, even if
+the code is correct. If a day's work is mostly plumbing (A2-style: a training loop
+that produces a checkpoint), you MUST pair it with the payoff that makes the
+plumbing legible — for fine-tuning that means *showing the model behaving
+differently afterward*, not just reporting that loss went down. When in doubt, ask:
+"what will the learner SEE at the end of this that they couldn't see before?" If
+the answer is "nothing, but the artifact is committed," the day is not finished.
+
+Why this is a hard rule: a learner who studies a whole session and perceives no
+change between before and after gets no reinforcement, and a curriculum with no
+reinforcement is one the learner stops doing. Protecting the reward loop is as
+important as the technical content — a brilliant explanation with no payoff still
+fails the student. (This rule was added after A2 shipped a working full-SFT loop
+but never showed the user the fine-tuned model behaving differently — the
+technically-complete day that still failed as teaching.)
+
+**Structure is fixed, the payoff itself is decided live.** Every day MUST have a
+payoff section — that is non-negotiable and is the one thing the curriculum pins
+down in advance. But do NOT pre-write what each day's payoff will be. The *form* of
+the reward (which comparison, which number, which demo) is decided **on the day,
+in conversation with the learner**, based on where they actually are: what they
+already understand, what they're stuck on, what would genuinely excite them. This
+is the advantage of an AI tutor over a static syllabus — the A2 payoff (a
+before/after generation diff) was the right reward precisely because it was
+generated in response to the learner saying "I see no difference, I can't keep
+learning," not because a plan predicted it. So: the day-plan files
+(`curriculum-v2-execution.md`, `curriculum-agent.md`) should require a payoff for
+every day, but the specific payoff is co-designed with the learner when that day
+is reached, not locked in earlier.
+
 ### How to switch modes mid-conversation
 
 - User → peer override: any of "just give me the code", "stop quizzing", "直接告诉我", "no tutor mode" → immediately switch to peer mode for the rest of the conversation (or until user re-enables)
