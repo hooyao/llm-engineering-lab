@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 done** — `experiments/a01-mem-budget/budget.py` (3 functions + 1B/3B/8B × full-SFT/LoRA × ckpt table; `--test` self-checks vs curriculum.md, hand-verified, all within 20%). Plus three concept notes from tutor-mode gaps: `teaching-notes.md` (what a parameter is / forward pass / where bytes go), `backprop-primer.md` (+`.zh`) (why training stores grads+activations). | A2 — full SFT 1B (`experiments/a02-sft-1b/`) |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 done**. A1: `experiments/a01-mem-budget/budget.py` (memory calculator, `--test` vs curriculum.md) + concept notes (`teaching-notes.md`, `backprop-primer.md`+`.zh`). A2: `experiments/a02-sft-1b/` first full-param SFT — Llama-3.2-1B, 500 alpaca ex, 1 epoch, 125 steps/83s, loss 1.72→1.35, **peak 13.84 GB**. Key finding: HF `Trainer(bf16=True)` is **12 B/param (no fp32 master)**, not 16 — measured matches to 0.2%; A1 notes corrected. Model saved `~/runs/a02-sft-1b/`. | A3 — gen quality before/after SFT (`experiments/a03-eval-1b/`) |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1, D2, D3 done** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` (stable partition, reads coalesce/run concurrent, writes are barriers) + `Channel` fan-in in `AgentLoop`; 36 tests. Notes: `agent/experiments/d0{1,2,3}-*`. **D3 merged: Astra PR #3 → submodule at `9ac91aa`.** | D4 — streaming/control layer: process-tree kill on cancel + bidirectional interruption (3 scenarios in d02 notes "OPEN for D4"). |
@@ -173,6 +173,47 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-17 — Track A Day 2 done (first full-parameter SFT) + A1 memory correction
+
+First real fine-tune on the GX10. Full-parameter SFT (LoRA removed) of
+Llama-3.2-1B-Instruct, `experiments/a02-sft-1b/` (train.py + run.sh).
+
+Result: 500 alpaca-cleaned examples, 1 epoch, batch=4 seq=1024 bf16 lr=2e-5 cosine.
+125 steps in 82.9 s (1.51 steps/s), loss 1.72 → final train_loss 1.478 (noisy, small
+data). 1.236B/1.236B trainable confirmed. Model saved to `~/runs/a02-sft-1b/`
+(model.safetensors 2.47 GB = 1.236B × 2 bytes bf16, exact). Loss started ~1.7 not
+~2.5 because the **-Instruct** base is already tuned — not a cold start.
+
+**Memory finding (A1 → A2 closed loop, corrects A1).** A1 predicted 16 B/param
+(mixed-precision Adam + fp32 master) ≈ 18.4 GB. **Measured peak 13.84 GB**, which
+matches the **12 B/param** recipe (pure bf16: w2 + g2 + fp32 m,v 8 = 12 → 13.81 GB)
+to 0.2%. Conclusion: **HF `Trainer(bf16=True)` keeps NO fp32 master weight** — it's
+12 B/param, not 16. The 16 figure is DeepSpeed/FSDP mixed-precision. Corrected
+`a01-mem-budget/notes.md` + `teaching-notes.md`; `budget.py` already supported it via
+`master_dtype=None`. So for HF-Trainer full SFT, use **12 B/param**; treat 16 as the
+DeepSpeed/FSDP upper bound.
+
+**Infra notes for next session:**
+- **SSH changed.** Password-less `ssh hooyao@192.168.1.200` no longer works
+  (Permission denied, publickey/password). The working path is the **NVIDIA Sync**
+  key: host alias `GX10` in `~/.ssh/config` includes
+  `C:\Users\yahu2\AppData\Local\NVIDIA Corporation\Sync\config\ssh_config`
+  (Hostname 192.168.1.200, User hooyao, IdentityFile `…\Sync\config\nvsync.key`).
+  Git-bash ssh doesn't parse that Windows-path `Include`, so a `Host GX10` block was
+  added directly to `~/.ssh/config` pointing at `nvsync.key`. **Use `ssh GX10`** (or
+  `-i …/nvsync.key`). Driver now reports **595.58.03** via CUDA forward-compat
+  (kernel driver still 580.159.03).
+- **GX10 git is broken for pull.** Remote is HTTPS and the box's `gh` token is
+  **invalid** (`gh auth status` → "token in default is invalid"), so
+  `git pull` fails with `could not read Username for https://github.com`. Worked
+  around by `scp`-ing the A2 scripts directly. To fix properly: on the box run
+  `gh auth login -h github.com` (interactive — user must do it), or switch the
+  remote to SSH. Until then, scp new scripts to the box.
+- Container files in `~/runs/a02-sft-1b/` are `root:root` (docker runs as root).
+
+Next: A3 — generation quality before vs after SFT (`experiments/a03-eval-1b/`),
+peer mode. Uses the saved `~/runs/a02-sft-1b/` checkpoint vs the base 1B.
 
 ### 2026-06-18 — sourced the 2150 MHz clamp + measured what capping costs
 

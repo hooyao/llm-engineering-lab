@@ -167,6 +167,13 @@ and that still excludes activations (the intermediate `h` values from §3; see �
 > `3.2e9 × 16 ≈ 51 GB`, not 36. `budget.py` and `notes/curriculum.md` use 16; this
 > note teaches with 12 then corrects to 16 here so both numbers make sense.
 
+> **Update — MEASURED in A2 (2026-06-17):** the *default* is actually 12, not 16.
+> HuggingFace `Trainer(bf16=True)` keeps **no fp32 master weight**, so it runs the
+> 12 B/param recipe; A2's 1B full SFT peaked at 13.84 GB, matching 12 B/param to
+> 0.2%. The 16 B/param (fp32 master) recipe is what **DeepSpeed / FSDP
+> mixed-precision** uses. So: 12 = HF-`Trainer` default, 16 = DeepSpeed/FSDP upper
+> bound. See `../a02-sft-1b/notes.md` for the full reconciliation.
+
 ### dtype is the per-number cost knob
 
 | dtype | bytes/number | used for |

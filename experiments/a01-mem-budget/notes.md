@@ -15,19 +15,29 @@ Pure stdlib (argparse + dataclasses), no GPU needed — runs anywhere with Pytho
 `--test` was verified by hand against curriculum.md (GX10 was offline when written;
 re-run on the box to confirm: all four checks land within 20%).
 
-## The one number that matters: full-SFT Adam = 16 B/param, not 12
+## The one number that matters: 12 vs 16 B/param — and which one you actually get
 
 The teaching intuition (2 weight + 2 grad + 4 m + 4 v = 12) is the *pure-bf16*
-recipe. Production full SFT uses **mixed-precision Adam = 16 B/param**:
+recipe. A *mixed-precision* recipe adds a **fp32 master weight** (+4) for 16:
 
 ```
-bf16 weight 2 + bf16 grad 2 + fp32 master 4 + Adam m 4 + Adam v 4 = 16
+12 (pure bf16):   bf16 weight 2 + bf16 grad 2 +                 Adam m 4 + Adam v 4
+16 (mixed-prec):  bf16 weight 2 + bf16 grad 2 + fp32 master 4 + Adam m 4 + Adam v 4
 ```
 
-The extra 4 is the **fp32 master weight**: bf16 has ~7 bits of mantissa, so many
-`lr * grad` updates are too small to survive being added to a bf16 weight. Keep an
-fp32 master copy, accumulate there, cast to bf16 for the next forward. `budget.py`
-defaults to 16 (`master_dtype="fp32"`); pass `master_dtype=None` for the 12-B recipe.
+The fp32 master exists because bf16 has ~7 bits of mantissa, so many `lr * grad`
+updates are too small to survive being added to a bf16 weight; you keep an fp32
+copy, accumulate there, cast back to bf16 for the next forward.
+
+> **MEASURED (A2, 2026-06-17):** which one you get depends on the trainer.
+> **HuggingFace `Trainer(bf16=True)` uses 12 B/param — NO fp32 master.** A2's full
+> SFT of Llama-3.2-1B peaked at 13.84 GB, matching the 12 B/param prediction
+> (13.81 GB) to 0.2%, not the 16 B/param one (18.42 GB). The 16 B/param figure
+> applies to **DeepSpeed / FSDP mixed-precision** or an explicitly mixed-precision
+> optimizer. `curriculum.md` quotes 16 as the headline (conservative, DeepSpeed-era);
+> the naive `Trainer` path is cheaper. Treat 16 as the *upper bound* and 12 as the
+> HF-`Trainer` default. `budget.py` supports both: `master_dtype="fp32"` (16) vs
+> `master_dtype=None` (12).
 
 ## Per-param byte cheat sheet (aligned with curriculum.md)
 
