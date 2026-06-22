@@ -60,6 +60,60 @@ private `KillTreeAsync`:
   typically already cancelled; passing it would return before the tree finished
   dying. `None` forces the wait so "stopped" is true on return.
 
+## Source-of-truth reconciliation (done AFTER the fact — a process miss)
+
+Honesty note: this day was built from .NET `Process` first principles + the d02
+scenarios, and I did NOT first read the Claude Code source the way the repo's
+source-tiering rule requires (`refs/claude-code-sourcemap` is the source of truth;
+read it, then improve, then implement). I reconciled afterward. What the source
+(`src/utils/ShellCommand.ts`, `src/utils/shell/bashProvider.ts`) actually shows:
+
+| Dimension | Claude Code | Astra D4 | Verdict |
+|---|---|---|---|
+| Kill the whole tree | `treeKill(pid, 'SIGKILL')` (npm `tree-kill`) | `Process.Kill(entireProcessTree: true)` | **same conclusion** |
+| Spawn config | `detached: true` (POSIX process group, kill the `-pgid`) | default spawn; .NET walks the descendant set itself | mechanism differs |
+| Trigger | `AbortSignal` `abort` event → `#doKill` | `CancellationToken` → `finally` | equivalent, per-platform idiom |
+| Escalation | straight `SIGKILL` (no TERM-then-KILL) | straight `Kill` (also SIGKILL) | same |
+
+So the core conclusion (kill the tree) was right — but right by first-principles
+luck, not by following the method. The cost of skipping the source read shows up
+in the next row:
+
+**The real miss — CC distinguishes two abort *reasons*, and I didn't.**
+`ShellCommand.ts#abortHandler`:
+
+```ts
+#abortHandler(): void {
+  // On 'interrupt' (user submitted a new message), don't kill — let the
+  // caller background the process so the model can see partial output.
+  if (this.#abortSignal.reason === 'interrupt') { return }
+  this.kill()
+}
+```
+
+CC's single abort signal carries a **reason**: a real stop/cancel kills the tree;
+an **`interrupt`** (the user typed a new message mid-turn) does NOT kill — it
+backgrounds the process so the model can still read its partial output. That is
+exactly d02's **scenario 1** (inject input mid-turn) and **scenario 2** (stop the
+tool) — and the source shows they are **not two separate mechanisms but two
+branches on one abort signal keyed by reason**. My d04 design treated them as
+independent deferred items because I never read this. This is the concrete thing
+the source read would have given me up front.
+
+**Carry-forward for the deferred control-plane:** model cancellation as a signal
+*with a reason* (`Cancel` vs `Interrupt`), not a bare token. `Cancel` → the D4
+tree-kill path (done). `Interrupt` → background the process, keep its partial
+output, splice the new user input into the next turn. One signal, two branches —
+mirror CC's shape rather than building two parallel systems. (Also worth lifting
+later: CC's `detached: true` + process-group kill is the lighter-weight mechanism
+vs. .NET walking the tree; revisit if `Process.Kill(true)` proves costly.)
+
+**Process fix going forward:** every Track D day's notes must carry a
+"Source-of-truth reconciliation" section written BEFORE the code, not after —
+grep `refs/claude-code-sourcemap` for the subsystem, state what CC does and where
+Astra agrees/diverges and why. D3 did this (partitionToolCalls); D4 did not. This
+section is the retro-fit.
+
 ## Tests (+2)
 
 `tests/Astra.Core.Tests/BashToolCancellationTests.cs`:
@@ -82,21 +136,35 @@ Local result: **38/38 pass on Windows** (36 prior + 2). On Windows the tree-kill
 test early-returns, so its core assertion is **not** exercised here — see the gate
 below.
 
-## >>> VERIFICATION GATE (must run before D4 is "verified")
+## VERIFICATION GATE — CLEARED (Linux-verified on WSL)
 
-The tree-kill assertion only executes on Linux/macOS. This session's machine had
-no reachable Linux target (GX10 `192.168.1.200` SSH timed out; no WSL distro; no
-Docker daemon), so the core guarantee is implemented and reviewed but **not yet
-executed green on a POSIX box**. Before claiming D4 verified:
+The tree-kill assertion only executes on Linux/macOS (POSIX sh subshell
+semantics; Windows uses cmd.exe and early-returns). It is now **verified on real
+Linux**: WSL Ubuntu 24.04 (x86_64), .NET SDK 10.0.301, project copied to the
+native filesystem (`~/astra-verify`, not the 9p `/mnt` mount).
+
+Result: full suite **38/38 pass on Linux**.
+`ExecuteAsync_Cancelled_KillsWholeTree_GrandchildStopsTicking` executed its real
+body (~1 s duration — it waits for ≥2 ticks, cancels, then waits 200 ms + 800 ms;
+an early-return would be sub-millisecond) and **passed**: the reparented
+grandchild stopped ticking after the kill, so cancellation takes down the whole
+process tree, not just the direct shell child. `ExecuteAsync_Cancelled_ThrowsPromptly`
+also passed (363 ms, far under the 30 s command runtime).
+
+The GX10 was unreachable this session (`192.168.1.200` SSH timed out); WSL was the
+POSIX target instead. Re-running on the GX10 (aarch64) later would additionally
+confirm the guarantee on Arm, but the mechanism is now proven on Linux:
 
 ```bash
-# On the GX10 (aarch64 Linux) once reachable, in the Astra checkout:
 dotnet test Astra.slnx --filter "FullyQualifiedName~BashToolCancellation"
-# Expect: the GrandchildStopsTicking test runs (not early-return) and passes.
 ```
 
-Then record the green result in progress.md and drop this gate. Until then, D4 is
-"implemented, Windows-green, Linux-pending".
+> Side effect of this verification run: it surfaced a *separate* Linux-only bug in
+> the D2 streaming path (`ExecuteAsync_StreamsProgressThenSingleResult` failed 3/3
+> on Linux — output channel completed on `Process.Exited`, a race that dropped all
+> Progress for fast-exiting commands). Fixed in Astra PR #5 (complete on stdout+
+> stderr EOF instead); re-verified 38/38 green on Linux including 3/3 on the
+> streaming test. See progress.md.
 
 ## Open / deferred (the rest of the control layer)
 

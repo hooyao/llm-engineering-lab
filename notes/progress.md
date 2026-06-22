@@ -134,7 +134,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 done** — `experiments/a01-mem-budget/budget.py` (3 functions + 1B/3B/8B × full-SFT/LoRA × ckpt table; `--test` self-checks vs curriculum.md, hand-verified, all within 20%). Plus three concept notes from tutor-mode gaps: `teaching-notes.md` (what a parameter is / forward pass / where bytes go), `backprop-primer.md` (+`.zh`) (why training stores grads+activations). | A2 — full SFT 1B (`experiments/a02-sft-1b/`) |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D4 done** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` (stable partition, reads coalesce/run concurrent, writes are barriers) + `Channel` fan-in in `AgentLoop`. D4: control layer — cancel kills the child process **tree** then reaps (`try/finally` + `KillTreeAsync` in `BashTool`); closes the "stop = I stop watching" hole. Notes: `agent/experiments/d0{1,2,3,4}-*`. **Astra submodule at `0117e60` (D4 PR #4 merged). ⚠️ D4 tree-kill test only runs on Linux — see GATE in d04 notes; Windows-green 38/38 but core assertion Linux-pending.** | D5 — permission pipeline (layered, fail-closed) per `curriculum-agent.md`; OR finish the deferred D4 control-plane (scenario 1 input-injection / scenario 3 policy). |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D4 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` + `Channel` fan-in. D4: control layer — cancel kills the child process **tree** then reaps (`try/finally` + `KillTreeAsync` in `BashTool`). Notes: `agent/experiments/d0{1,2,3,4}-*`. **Astra submodule at `11b6aed`.** D4 tree-kill **verified on WSL Linux** (.NET 10.0.301, 38/38). That run also surfaced + we fixed a Linux-only D2 streaming race (channel completed on `Process.Exited` → dropped all Progress for fast-exiting cmds; now completes on stdout+stderr EOF — Astra PR #5). | D5 — permission pipeline (layered, fail-closed) per `curriculum-agent.md`; OR the deferred D4 control-plane (scenario 1 input-injection / scenario 3 policy — CC models these as one abort signal with a `reason`, see d04 notes). |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -173,6 +173,58 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-22 — D4 Linux-verified on WSL; fixed a Linux-only D2 streaming race; D4 source-of-truth reconciliation
+
+Three connected things this session, prompted by the user's (correct) challenge:
+"is Track D actually following the Claude Code source, or are you winging it?"
+
+**1. D4 verified on real Linux.** The D4 tree-kill test is POSIX-only and had
+never executed its core assertion (Windows early-returns; GX10 was unreachable —
+`192.168.1.200` SSH timed out). This machine turned out to have a WSL Ubuntu 24.04
+(x86_64) distro. A background agent installed .NET SDK 10.0.301 (official
+dot.net install script, user-local `~/.dotnet`), copied Astra to the native FS
+(`~/astra-verify`, NOT the 9p `/mnt` mount), and ran the suite. Result: **38/38 on
+Linux**; `KillsWholeTree_GrandchildStopsTicking` ran its real body (~1 s) and
+passed — the reparented grandchild stopped ticking after the kill, proving the
+whole process tree dies. D4 gate in d04 notes is now CLEARED. (WSL is the standing
+Linux target for this env since the GX10 is unreachable here — `wsl.exe -e bash
+-lc '...'` from the Bash tool; install dotnet per-distro as above.)
+
+**2. Fixed a Linux-only D2 streaming regression (Astra PR #5, `11b6aed`).** The
+same Linux run surfaced a real bug: `ExecuteAsync_StreamsProgressThenSingleResult`
+failed 3/3 on Linux (passed on Windows). Root cause: `BashTool` completed the
+output `Channel` in the `Process.Exited` handler — a race against the threadpool
+pumping `OutputDataReceived`. For a fast-exiting command (`printf`), `Exited` won,
+`TryComplete()` closed the channel, and the data lines' `TryWrite` calls dropped
+silently → zero Progress. Windows timing hid it. Fix: complete the channel when
+BOTH stdout+stderr hit EOF (each fires once with `e.Data == null`), tracked by an
+`Interlocked` countdown — decoupled from exit, no data dropped. Re-verified 38/38
+on Linux (streaming 3/3, cancellation unregressed). Lesson: "streaming done" (D2)
+was only ever Windows-tested; the contract had never actually held on Linux.
+
+**3. Source-of-truth reconciliation — a real process miss on D4.** The user was
+right. Honest grading of how closely each day tracked `refs/claude-code-sourcemap`:
+D3 genuinely traced the source (`partitionToolCalls` fold, confirmed); D2 read it
+and deliberately diverged (behavior-class vs command-string, with rationale); **D4
+I built from .NET first principles and did NOT read the source first**, contrary
+to the repo's source-tiering rule. Reconciled after the fact (in d04 notes):
+CC kills the tree too (`tree-kill` + `detached:true` process-group in
+`ShellCommand.ts`/`bashProvider.ts`) so the *conclusion* matched — but by luck,
+not method, and I missed a real design point: **CC's `#abortHandler` branches on
+the abort *reason*** — a real cancel kills the tree, but an `interrupt` (user typed
+mid-turn) does NOT kill, it backgrounds the process so the model keeps the partial
+output. That is d02's scenario 1 + scenario 2 as **two branches of one signal**,
+not two separate mechanisms. Carry-forward: model cancellation as a signal with a
+reason (`Cancel` vs `Interrupt`) when the deferred control-plane is built.
+**Process fix going forward: every Track D day writes a "Source-of-truth
+reconciliation" section BEFORE coding** (grep the sourcemap, state what CC does and
+where Astra agrees/diverges and why), not after.
+
+**Next:** D5 — permission pipeline (Layer 1 schema validation + Layer 2 rule
+matching policy>user>project>session, fail-closed + Layer 5 one confirmation hook).
+Builds on D2's `Classify`. Per the process fix above, D5 starts with the source
+read of `architecture/07-permission-pipeline.md` + CC `hooks/` + the permission flow.
 
 ### 2026-06-18 — Track D Day 4 done (control layer: process-tree kill on cancel, Astra PR #4 merged)
 
