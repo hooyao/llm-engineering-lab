@@ -174,6 +174,39 @@ When the user is ready to continue, the natural next steps are:
 
 ## LOG (append new entries at the top)
 
+### 2026-06-22 — A2 taught properly (per-learner learning-notes, Seg 1-6e) + diagnostic
+
+The user pushed for A2 to be re-taught their way: one small segment at a time, they
+clarify in place, each explanation + Q&A folded back into a per-learner note. This
+produced `experiments/a02-sft-1b/learning-notes.md` (~720 lines) — the new
+"learning note" type (CLAUDE.md): complete, dialogue-shaped, depth set by THIS
+learner's familiarity, math written terminal-safe (code, not LaTeX subscripts).
+
+Segments: 1 (what A2 does / fine-tuning = adjust existing model), 2 (parameter is
+the umbrella; weight/bias are kinds), 3 (12 B/param is storage cost, orthogonal to
+kind), 4 (text->token->ID->logits->softmax->probs), 4b (activation functions +
+the "why not x^2" question -> universal approximation), 5 (cross-entropy collapses
+to -log(p)), 6a/6b (backward: per-param gradient, chain rule, why it flows
+loss->input), 6c (AdamW m/v = A1's 8 bytes, full loop closes), 6d (fp16/fp32/bf16
+deep dive: why m/v need fp32), 6e (one neuron = n weights + 1 bias, each an
+independent parameter with its own gradient/m/v).
+
+Highlights: the learner independently re-derived **8-bit Adam** and **loss scaling**
+from systems instinct, and articulated the general rule "low precision is fine for
+used-then-discarded quantities (gradient/activation), not accumulated ones (m/v)."
+Their extension questions exceeded the core lesson in value.
+
+Added a **learner diagnostic** at the end of learning-notes: strengths (systems/
+precision instinct, asks "why this design not that", self-corrects from anchors),
+recurring weak spots (umbrella-vs-kind direction inversion — hit it 3x; fused
+nested scales like neuron-vs-layer; 2015-Ng concepts fuzzy/half-swapped; can read
+Σ but terminal won't render it), and the proven teaching method. Future sessions
+should read this before teaching this learner.
+
+No new GX10 runs this session — pure teaching off the existing A2 checkpoint and
+A3 results. A2 (run + payoff + lesson) is now fully complete. Next curriculum day:
+A4 (gradient accumulation), payoff co-designed on the day.
+
 ### 2026-06-17 — A3 done as the A2 payoff; "visible reward per day" rule added
 
 A2 was technically complete (a fine-tuned checkpoint) but the user pushed back hard
