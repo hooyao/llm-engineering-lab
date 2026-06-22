@@ -2,6 +2,73 @@
 
 Base: `/models/meta-llama/Llama-3.2-1B-Instruct`  |  Tuned: `/runs/a02-sft-1b`  |  greedy decoding
 
+> **A3 deliverable — the learner's OWN observations** (read the 10 pairs themselves,
+> not summarized for them). This is the actual A3 skill: tracing model-behavior
+> changes back to the training. Recorded below per-prompt + the conclusion, in the
+> learner's words, with tutor feedback noted where it sharpened the read.
+
+## The learner's read (per prompt)
+
+| # | learner's observation |
+|---|---|
+| 1 | base dropped a tip and didn't finish tip #2; AFTER actually listed all 3 completely |
+| 2 | base answered messily; tuned also not quite right (neither nails the hash-map explanation) |
+| 3 | no real difference (one word: descend→fall) |
+| 4 | both BEFORE and AFTER cut off mid-answer — script issue or model issue? |
+| 5 | both correct, no difference |
+| 6 | tuned has less fluff, more direct |
+| 7 | tuned is oddly phrased afterward, though the answer is actually correct |
+| 8 | AFTER didn't finish AND didn't follow the instruction "one thing each is good at" — rambled |
+| 9 | tuned is more concise |
+| 10 | tuned dropped the cooking steps; SFT seems to make answers more concise but it loses things, and instruction-following got worse |
+
+## The learner's conclusion
+
+> **SFT made answers more concise, but it loses content, and instruction-following
+> got worse.**
+
+This is sharper and more honest than the tutor's earlier walkthrough, which had
+under-weighted the downside. Reframed with the tutor:
+
+- **What SFT changed:** style — more direct, drops the "Here are…" preamble, more
+  concise (#1, #6, #9); occasionally slightly more accurate (#7 translation: base's
+  Spanish "Hola" was wrong, tuned's "buenos días" is right).
+- **What SFT did NOT change:** knowledge — facts roughly unchanged (#5 byte-identical;
+  #2 both vague). The decisive pair is #5.
+- **The cost (the learner's key catch):** conciseness has a price — instruction
+  following degraded (#8 ignored "one thing each"), content dropped (#10 lost the
+  recipe steps).
+
+## Why these results happened (traced back to the data — the real A3 skill)
+
+The fine-tune used **`yahma/alpaca-cleaned`, 500 examples, 1 epoch** (dataset has
+51,760 total; we used 500). Alpaca outputs are mostly **concise, directly-listed,
+no preamble** (e.g. instruction "Give three tips…" → output starts "1. … 2. … 3. …",
+no "Here are…"). So:
+
+- The model imitated that style → drops "Here are…", lists directly (#1, #6) — the
+  visible positive.
+- But 500 examples of a terse style, 1 epoch, over-fit the *surface* "be concise" →
+  over-concise, drops content, weaker instruction-following (#8, #10) — the cost.
+
+Every A3 observation traces back to the training data's characteristics.
+
+## On #4 (and #1, #8): script or model? — the learner's good question
+
+**Script — specifically a parameter the tutor set:** `max_new_tokens=120` hard-caps
+generation. Long answers (recipe steps, lists) get truncated — not the model failing,
+just not allowed to finish. Evidence: #5 (one sentence) isn't cut; #4/#8/#10 (long
+answers) are — fits a length cap exactly. Two effects overlap in "loses content":
+(1) the 120-token cap (mechanical, hits both models, and hits the wordier *base*
+harder — see #1 where base is the one cut off), and (2) SFT's genuine
+conciseness/dropping tendency (#10 simplified even within budget). To separate them:
+re-run with `max_new_tokens=512` — truncated ones finish, but SFT's terseness/
+instruction-drift remains. (A real experiment improvement the learner proposed.)
+
+---
+
+## Raw side-by-side (10 pairs, greedy decoding)
+
 
 ## 1. Give me three tips for staying focused while working from home.
 

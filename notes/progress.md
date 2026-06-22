@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 + A3 done**. A1: `budget.py` memory calculator + concept notes. A2: first full-param SFT (Llama-3.2-1B, 500 ex, peak 13.84 GB → corrects A1 to 12 B/param). A3 (also the A2 payoff): `experiments/a03-eval-1b/` before/after generation diff, `results.md` (10 pairs) — SFT visibly drops preamble / is more on-task, knowledge unchanged (#5 capital-of-France identical). | A4 — gradient accumulation (`experiments/a04-grad-accum/`) |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 + A3 done (incl. full per-learner teaching).** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, 500 ex, peak 13.84 GB → corrected A1 to 12 B/param) **+ taught segment-by-segment in `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e, ~720 lines, with a learner diagnostic at the end — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` has the learner's OWN before/after observations + the SFT-definition / dataset trace. | **A4 — gradient accumulation** (`experiments/a04-grad-accum/`). Learner wants to READ the code before running it; A4 is also where A2's hidden training loop (`trainer.train()`) gets unrolled so forward/loss/backward/optimizer become visible (deferred from A2 by learner's choice). |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1, D2, D3 done** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` (stable partition, reads coalesce/run concurrent, writes are barriers) + `Channel` fan-in in `AgentLoop`; 36 tests. Notes: `agent/experiments/d0{1,2,3}-*`. **D3 merged: Astra PR #3 → submodule at `9ac91aa`.** | D4 — streaming/control layer: process-tree kill on cancel + bidirectional interruption (3 scenarios in d02 notes "OPEN for D4"). |
@@ -173,6 +173,60 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-22 (later) — A3 finished to spec; HANDOFF for "continue A4" on a new machine
+
+The learner is switching to a different computer and will open a FRESH Claude Code
+session, say "continue learning A4," and expects it to pick up seamlessly with full
+memory of their learning history. This entry is the handoff. **New session: read
+this whole block before teaching A4.**
+
+**A3 is now genuinely done** (not just "eval ran"): the learner read all 10
+before/after pairs themselves and wrote their own observations — sharper than the
+tutor's earlier take. Their conclusion: *"SFT made answers more concise, but it
+loses content, and instruction-following got worse."* They independently (a) caught
+that #8/#10 show degraded instruction-following, (b) asked whether the cut-offs were
+script or model (answer: the `max_new_tokens=120` cap — a real experiment-improvement
+catch), and (c) learned SFT = Supervised Fine-Tuning on paired instruction→answer
+data, traced the behavior back to the training set (`yahma/alpaca-cleaned`, 500 of
+51,760 examples, terse list-style outputs → model over-fit "be concise"). All in
+`experiments/a03-eval-1b/results.md`.
+
+**How to resume A4 (do this in order):**
+1. Read `experiments/a02-sft-1b/learning-notes.md` IN FULL — especially the
+   **learner diagnostic** at the very end (strengths, recurring weak spots, the
+   proven teaching method). This is the single most important file for teaching this
+   learner well. Don't skip it.
+2. A4 day spec: `notes/curriculum-v2-execution.md` § A4 (gradient accumulation;
+   3B model, seq=1024, three configs micro/accum = 1/16, 4/4, 8/2, all effective
+   batch 16; deliverable = table of peak_mem/step_time/final_loss; the payoff is
+   "same effective batch → near-identical loss, different memory/speed").
+3. **Teach in TUTOR mode, learner-paced:** one small segment, let them clarify in
+   place, fold their Q&A into a NEW `experiments/a04-grad-accum/learning-notes.md`
+   (same per-learner format as A2's). **Do NOT rush to run code** — the learner
+   explicitly wants to READ and understand the code before any run.
+4. **A4 is where A2's hidden loop gets unrolled.** The learner couldn't fully read
+   A2's `train.py` because `trainer.train()` hides the four beats (forward/loss/
+   backward/optimizer). They CHOSE to defer that to A4, where gradient accumulation
+   forces an explicit training loop. So when teaching A4, show the explicit loop and
+   map each line to the four beats they already learned — then A2's train.py makes
+   sense in hindsight. (This is an owed debt: "A2 train.py walkthrough, deferred to A4.")
+
+**Learner profile (full version in learning-notes.md diagnostic):** strong systems/
+precision instinct (independently re-derived 8-bit Adam and loss scaling); asks "why
+this design not that"; learns from concrete numbers + linear-regression anchors, not
+abstractions. Recurring weak spots: inverts containment direction (umbrella-vs-kind,
+hit 3×) and fuses nested scales (neuron-vs-layer) — state direction and scale
+explicitly. Background concepts present but fuzzy (2015 Andrew Ng). Terminal does NOT
+render LaTeX sub/superscripts — write math as code (`y[i]`, for-loops), never as
+rendered subscripts. Conversation in 中文, all ML terms in English (bias/weight/
+gradient/...), never translated.
+
+**Env reminders for the new machine:** GX10 SSH needs the NVIDIA Sync key — set up a
+`Host GX10` block in `~/.ssh/config` pointing at the `nvsync.key` (see the 2026-06-17
+A2 log entry for the exact path/pattern) and use `ssh GX10`. The box's `gh` token is
+invalid, so `git pull` fails ON THE BOX — scp scripts to it, or re-auth gh there. The
+A2 checkpoint lives on the box at `~/runs/a02-sft-1b/`.
 
 ### 2026-06-22 — A2 taught properly (per-learner learning-notes, Seg 1-6e) + diagnostic
 
