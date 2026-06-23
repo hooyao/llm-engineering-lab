@@ -15,6 +15,9 @@
 *.yml        text eol=lf
 *.json       text eol=lf
 *.toml       text eol=lf
+*.html       text eol=lf
+*.css        text eol=lf
+*.js         text eol=lf
 
 # Binary-ish files
 *.png        binary
