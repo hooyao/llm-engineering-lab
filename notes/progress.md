@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 done** — `experiments/a01-mem-budget/budget.py` (3 functions + 1B/3B/8B × full-SFT/LoRA × ckpt table; `--test` self-checks vs curriculum.md, hand-verified, all within 20%). Plus three concept notes from tutor-mode gaps: `teaching-notes.md` (what a parameter is / forward pass / where bytes go), `backprop-primer.md` (+`.zh`) (why training stores grads+activations). | A2 — full SFT 1B (`experiments/a02-sft-1b/`) |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 + A3 done (incl. full per-learner teaching).** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, 500 ex, peak 13.84 GB → corrected A1 to 12 B/param) **+ taught segment-by-segment in `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e, ~720 lines, with a learner diagnostic at the end — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` has the learner's OWN before/after observations + the SFT-definition / dataset trace. | **A4 — gradient accumulation** (`experiments/a04-grad-accum/`). Learner wants to READ the code before running it; A4 is also where A2's hidden training loop (`trainer.train()`) gets unrolled so forward/loss/backward/optimizer become visible (deferred from A2 by learner's choice). |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1–D4 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` + `Channel` fan-in. D4: control layer — cancel kills the child process **tree** then reaps (`try/finally` + `KillTreeAsync` in `BashTool`). Notes: `agent/experiments/d0{1,2,3,4}-*`. **Astra submodule at `11b6aed`.** D4 tree-kill **verified on WSL Linux** (.NET 10.0.301, 38/38). That run also surfaced + we fixed a Linux-only D2 streaming race (channel completed on `Process.Exited` → dropped all Progress for fast-exiting cmds; now completes on stdout+stderr EOF — Astra PR #5). | D5 — permission pipeline (layered, fail-closed) per `curriculum-agent.md`; OR the deferred D4 control-plane (scenario 1 input-injection / scenario 3 policy — CC models these as one abort signal with a `reason`, see d04 notes). |
@@ -280,6 +280,160 @@ path only). All in d04 notes "Open / deferred".
 
 **Next:** D5 — permission pipeline (layered, fail-closed) per curriculum-agent.md;
 OR circle back to finish the deferred D4 control-plane. User's call.
+
+### 2026-06-22 (later) — A3 finished to spec; HANDOFF for "continue A4" on a new machine
+
+The learner is switching to a different computer and will open a FRESH Claude Code
+session, say "continue learning A4," and expects it to pick up seamlessly with full
+memory of their learning history. This entry is the handoff. **New session: read
+this whole block before teaching A4.**
+
+**A3 is now genuinely done** (not just "eval ran"): the learner read all 10
+before/after pairs themselves and wrote their own observations — sharper than the
+tutor's earlier take. Their conclusion: *"SFT made answers more concise, but it
+loses content, and instruction-following got worse."* They independently (a) caught
+that #8/#10 show degraded instruction-following, (b) asked whether the cut-offs were
+script or model (answer: the `max_new_tokens=120` cap — a real experiment-improvement
+catch), and (c) learned SFT = Supervised Fine-Tuning on paired instruction→answer
+data, traced the behavior back to the training set (`yahma/alpaca-cleaned`, 500 of
+51,760 examples, terse list-style outputs → model over-fit "be concise"). All in
+`experiments/a03-eval-1b/results.md`.
+
+**How to resume A4 (do this in order):**
+1. Read `experiments/a02-sft-1b/learning-notes.md` IN FULL — especially the
+   **learner diagnostic** at the very end (strengths, recurring weak spots, the
+   proven teaching method). This is the single most important file for teaching this
+   learner well. Don't skip it.
+2. A4 day spec: `notes/curriculum-v2-execution.md` § A4 (gradient accumulation;
+   3B model, seq=1024, three configs micro/accum = 1/16, 4/4, 8/2, all effective
+   batch 16; deliverable = table of peak_mem/step_time/final_loss; the payoff is
+   "same effective batch → near-identical loss, different memory/speed").
+3. **Teach in TUTOR mode, learner-paced:** one small segment, let them clarify in
+   place, fold their Q&A into a NEW `experiments/a04-grad-accum/learning-notes.md`
+   (same per-learner format as A2's). **Do NOT rush to run code** — the learner
+   explicitly wants to READ and understand the code before any run.
+4. **A4 is where A2's hidden loop gets unrolled.** The learner couldn't fully read
+   A2's `train.py` because `trainer.train()` hides the four beats (forward/loss/
+   backward/optimizer). They CHOSE to defer that to A4, where gradient accumulation
+   forces an explicit training loop. So when teaching A4, show the explicit loop and
+   map each line to the four beats they already learned — then A2's train.py makes
+   sense in hindsight. (This is an owed debt: "A2 train.py walkthrough, deferred to A4.")
+
+**Learner profile (full version in learning-notes.md diagnostic):** strong systems/
+precision instinct (independently re-derived 8-bit Adam and loss scaling); asks "why
+this design not that"; learns from concrete numbers + linear-regression anchors, not
+abstractions. Recurring weak spots: inverts containment direction (umbrella-vs-kind,
+hit 3×) and fuses nested scales (neuron-vs-layer) — state direction and scale
+explicitly. Background concepts present but fuzzy (2015 Andrew Ng). Terminal does NOT
+render LaTeX sub/superscripts — write math as code (`y[i]`, for-loops), never as
+rendered subscripts. Conversation in 中文, all ML terms in English (bias/weight/
+gradient/...), never translated.
+
+**Env reminders for the new machine:** GX10 SSH needs the NVIDIA Sync key — set up a
+`Host GX10` block in `~/.ssh/config` pointing at the `nvsync.key` (see the 2026-06-17
+A2 log entry for the exact path/pattern) and use `ssh GX10`. The box's `gh` token is
+invalid, so `git pull` fails ON THE BOX — scp scripts to it, or re-auth gh there. The
+A2 checkpoint lives on the box at `~/runs/a02-sft-1b/`.
+
+### 2026-06-22 — A2 taught properly (per-learner learning-notes, Seg 1-6e) + diagnostic
+
+The user pushed for A2 to be re-taught their way: one small segment at a time, they
+clarify in place, each explanation + Q&A folded back into a per-learner note. This
+produced `experiments/a02-sft-1b/learning-notes.md` (~720 lines) — the new
+"learning note" type (CLAUDE.md): complete, dialogue-shaped, depth set by THIS
+learner's familiarity, math written terminal-safe (code, not LaTeX subscripts).
+
+Segments: 1 (what A2 does / fine-tuning = adjust existing model), 2 (parameter is
+the umbrella; weight/bias are kinds), 3 (12 B/param is storage cost, orthogonal to
+kind), 4 (text->token->ID->logits->softmax->probs), 4b (activation functions +
+the "why not x^2" question -> universal approximation), 5 (cross-entropy collapses
+to -log(p)), 6a/6b (backward: per-param gradient, chain rule, why it flows
+loss->input), 6c (AdamW m/v = A1's 8 bytes, full loop closes), 6d (fp16/fp32/bf16
+deep dive: why m/v need fp32), 6e (one neuron = n weights + 1 bias, each an
+independent parameter with its own gradient/m/v).
+
+Highlights: the learner independently re-derived **8-bit Adam** and **loss scaling**
+from systems instinct, and articulated the general rule "low precision is fine for
+used-then-discarded quantities (gradient/activation), not accumulated ones (m/v)."
+Their extension questions exceeded the core lesson in value.
+
+Added a **learner diagnostic** at the end of learning-notes: strengths (systems/
+precision instinct, asks "why this design not that", self-corrects from anchors),
+recurring weak spots (umbrella-vs-kind direction inversion — hit it 3x; fused
+nested scales like neuron-vs-layer; 2015-Ng concepts fuzzy/half-swapped; can read
+Σ but terminal won't render it), and the proven teaching method. Future sessions
+should read this before teaching this learner.
+
+No new GX10 runs this session — pure teaching off the existing A2 checkpoint and
+A3 results. A2 (run + payoff + lesson) is now fully complete. Next curriculum day:
+A4 (gradient accumulation), payoff co-designed on the day.
+
+### 2026-06-17 — A3 done as the A2 payoff; "visible reward per day" rule added
+
+A2 was technically complete (a fine-tuned checkpoint) but the user pushed back hard
+and correctly: they learned the loop yet never *saw* the model behave differently,
+so the day failed as teaching — "no reward, I can't keep learning." Fixed two ways:
+
+1. **Ran A3 immediately as the A2 payoff** — `experiments/a03-eval-1b/compare.py`:
+   base Llama-3.2-1B-Instruct vs the A2 checkpoint, same 10 prompts, greedy. The
+   diff is visible and instructive: SFT drops the "Here are…" preamble, is more
+   on-task/concise, and **knowledge is unchanged** (#5 capital-of-France byte-
+   identical) — the textbook "SFT changes format/style not facts." `results.md`
+   (10 pairs) committed; saved on box at `~/runs/a03-eval/results.md`.
+   (One gotcha: a too-narrow monitor grep made the live output look empty; the
+   generations were there all along — check `~/runs/...` host path, not `/runs/...`.)
+
+2. **CLAUDE.md: new hard rule "Every day must pay off in something the learner can
+   SEE."** Plus a teaching gap surfaced about curriculum design: the *structure*
+   (every day has a payoff section) is fixed, but the *specific payoff is decided
+   live with the learner*, not pre-written — the A2 payoff was right because it
+   was generated in response to the user, which a static syllabus can't do. Rule
+   text says exactly this.
+
+Next: A4 — gradient accumulation (`experiments/a04-grad-accum/`). Its payoff (to be
+co-designed on the day) is likely "three configs, same effective batch → same loss,
+different memory/speed" shown as a table the user reads themselves.
+
+### 2026-06-17 — Track A Day 2 done (first full-parameter SFT) + A1 memory correction
+
+First real fine-tune on the GX10. Full-parameter SFT (LoRA removed) of
+Llama-3.2-1B-Instruct, `experiments/a02-sft-1b/` (train.py + run.sh).
+
+Result: 500 alpaca-cleaned examples, 1 epoch, batch=4 seq=1024 bf16 lr=2e-5 cosine.
+125 steps in 82.9 s (1.51 steps/s), loss 1.72 → final train_loss 1.478 (noisy, small
+data). 1.236B/1.236B trainable confirmed. Model saved to `~/runs/a02-sft-1b/`
+(model.safetensors 2.47 GB = 1.236B × 2 bytes bf16, exact). Loss started ~1.7 not
+~2.5 because the **-Instruct** base is already tuned — not a cold start.
+
+**Memory finding (A1 → A2 closed loop, corrects A1).** A1 predicted 16 B/param
+(mixed-precision Adam + fp32 master) ≈ 18.4 GB. **Measured peak 13.84 GB**, which
+matches the **12 B/param** recipe (pure bf16: w2 + g2 + fp32 m,v 8 = 12 → 13.81 GB)
+to 0.2%. Conclusion: **HF `Trainer(bf16=True)` keeps NO fp32 master weight** — it's
+12 B/param, not 16. The 16 figure is DeepSpeed/FSDP mixed-precision. Corrected
+`a01-mem-budget/notes.md` + `teaching-notes.md`; `budget.py` already supported it via
+`master_dtype=None`. So for HF-Trainer full SFT, use **12 B/param**; treat 16 as the
+DeepSpeed/FSDP upper bound.
+
+**Infra notes for next session:**
+- **SSH changed.** Password-less `ssh hooyao@192.168.1.200` no longer works
+  (Permission denied, publickey/password). The working path is the **NVIDIA Sync**
+  key: host alias `GX10` in `~/.ssh/config` includes
+  `C:\Users\yahu2\AppData\Local\NVIDIA Corporation\Sync\config\ssh_config`
+  (Hostname 192.168.1.200, User hooyao, IdentityFile `…\Sync\config\nvsync.key`).
+  Git-bash ssh doesn't parse that Windows-path `Include`, so a `Host GX10` block was
+  added directly to `~/.ssh/config` pointing at `nvsync.key`. **Use `ssh GX10`** (or
+  `-i …/nvsync.key`). Driver now reports **595.58.03** via CUDA forward-compat
+  (kernel driver still 580.159.03).
+- **GX10 git is broken for pull.** Remote is HTTPS and the box's `gh` token is
+  **invalid** (`gh auth status` → "token in default is invalid"), so
+  `git pull` fails with `could not read Username for https://github.com`. Worked
+  around by `scp`-ing the A2 scripts directly. To fix properly: on the box run
+  `gh auth login -h github.com` (interactive — user must do it), or switch the
+  remote to SSH. Until then, scp new scripts to the box.
+- Container files in `~/runs/a02-sft-1b/` are `root:root` (docker runs as root).
+
+Next: A3 — generation quality before vs after SFT (`experiments/a03-eval-1b/`),
+peer mode. Uses the saved `~/runs/a02-sft-1b/` checkpoint vs the base 1B.
 
 ### 2026-06-18 — sourced the 2150 MHz clamp + measured what capping costs
 

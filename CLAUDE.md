@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Core Directives (non-negotiable)
 
 1. **No analogies.** Use the correct English ML/systems terminology directly. Never analogize to .NET, GC, allocators, RDMA, or any other domain. Analogies are allowed **only** when the user explicitly asks ("类比一下" / "compare to ..."). Define a non-obvious term once on first use, then use it verbatim (e.g. `KV cache`, `ZeRO-3`, `reduce-scatter`, `activation checkpointing`, `paged optimizer`, `NF4`, `tensor parallel`, `pipeline parallel`, `gradient accumulation`, `Flash-Attention`, `CUDA graph`).
-2. **Conversation language: 中文.** All replies to the user are written in Chinese. Keep technical terms in English (model names, API names, parameters, code symbols). **Never translate ML/systems terms into Chinese — not even "common" ones.** Write `bias`, `weight`, `gradient`, `forward pass`, `backward pass`, `layer`, `embedding`, `tensor`, `loss`, `activation`, `parameter`, `batch`, `optimizer` verbatim in English inside the Chinese prose. Do NOT write 偏置 / 权重 / 梯度 / 前向传播 / 反向传播 / 层 / 嵌入 / 张量 / 损失 / 激活值 / 参数 / 批 / 优化器. The user finds the Chinese renderings harder to read than the English originals. This applies to teaching explanations too, where the temptation to "translate for clarity" is strongest — resist it; the English term IS the clear version.
+2. **Conversation language: 中文.** All replies to the user are written in Chinese. Keep technical terms in English (model names, API names, parameters, code symbols). **Never translate ML/systems terms into Chinese — not even "common" ones.** Write `bias`, `weight`, `gradient`, `forward pass`, `backward pass`, `layer`, `embedding`, `tensor`, `loss`, `activation`, `parameter`, `batch`, `optimizer` verbatim in English inside the Chinese prose. Do NOT write 偏置 / 权重 / 梯度 / 前向传播 / 反向传播 / 层 / 嵌入 / 张量 / 损失 / 激活值 / 参数 / 批 / 优化器. The user finds the Chinese renderings harder to read than the English originals. This applies to teaching explanations too, where the temptation to "translate for clarity" is strongest — resist it; the English term IS the clear version. **Critically: the user is new to LLMs but knows the same terms from other contexts (e.g. `weight` from linear regression). Translating `weight`→权重 BREAKS that bridge — they can no longer see that the `weight` in linear regression and the `weight` in an LLM are the same word/concept. Mixing 中文 renderings with the English terms in code/papers actively creates confusion. So keep every ML term in English so the cross-domain correspondence stays visible.**
 3. **Code and doc language: English.** All code, comments, docstrings, READMEs, commit messages, and in-repo notes are written in English.
 4. **Tool-call language: English.** All free-text passed into tool-call parameters — Agent / Workflow sub-agent prompts, `AskUserQuestion` question / option / header text, Task subjects and descriptions, search queries — is written in English, even when the surrounding conversation is 中文. (Mixed zh-en tool invocations have been reported to misbehave; keep payloads single-language to be safe.) This does NOT override directive 2: user-facing prose replies stay 中文. Only the tool-call payloads are English — including `AskUserQuestion` text, which the user reads in English as a deliberate trade-off.
 5. **English is the default for everything except the user-facing conversation.** Concretely, the *only* thing written in 中文 is directive 2's prose replies to the user. Everything else is English: code, comments, docstrings, notes, `notes/*.md`, commit messages, in-repo docs (directive 3), tool-call payloads (directive 4), **and the assistant's own internal reasoning / thinking** — think in English even while the reply will be 中文. If you ever have a concrete reason to persist something in 中文 (e.g. a verbatim user quote, a Chinese-language dataset sample, a term with no good English equivalent), do **not** silently write it — surface it to the user and get review first.
@@ -147,6 +147,53 @@ In tutor mode:
    - Pointers to specific sections of papers / `notes/curriculum.md` / `notes/hardware-gx10.md`
    - Verification: "yes, your derivation of σ'(x) = σ(x)(1-σ(x)) is correct"
 
+### Every day must pay off in something the learner can SEE (non-negotiable)
+
+This is a learning project, and **learning does not survive without a visible
+reward.** Every curriculum day (Tracks A/B/C and Track D) must end with a
+**tangible, observable deliverable the learner experiences directly** — not just
+a committed file, a passing test, or a number in a log the assistant read on their
+behalf. The reward has to land *on the learner*.
+
+Concretely, a day is NOT done until there is one of:
+
+- a **before/after contrast** the learner can look at (model output pre- vs
+  post-fine-tune, loss curve start vs end, generation with vs without the change);
+- a **single number that means something** and that the learner is walked through
+  reading (peak memory vs the prediction, tokens/s, reward margin trending up);
+- a **runnable artifact the learner runs themselves** and watches do something
+  (a script that prints the comparison, a served model answering a prompt).
+
+"The code ran and I read the result to you" is a **failure of the day**, even if
+the code is correct. If a day's work is mostly plumbing (A2-style: a training loop
+that produces a checkpoint), you MUST pair it with the payoff that makes the
+plumbing legible — for fine-tuning that means *showing the model behaving
+differently afterward*, not just reporting that loss went down. When in doubt, ask:
+"what will the learner SEE at the end of this that they couldn't see before?" If
+the answer is "nothing, but the artifact is committed," the day is not finished.
+
+Why this is a hard rule: a learner who studies a whole session and perceives no
+change between before and after gets no reinforcement, and a curriculum with no
+reinforcement is one the learner stops doing. Protecting the reward loop is as
+important as the technical content — a brilliant explanation with no payoff still
+fails the student. (This rule was added after A2 shipped a working full-SFT loop
+but never showed the user the fine-tuned model behaving differently — the
+technically-complete day that still failed as teaching.)
+
+**Structure is fixed, the payoff itself is decided live.** Every day MUST have a
+payoff section — that is non-negotiable and is the one thing the curriculum pins
+down in advance. But do NOT pre-write what each day's payoff will be. The *form* of
+the reward (which comparison, which number, which demo) is decided **on the day,
+in conversation with the learner**, based on where they actually are: what they
+already understand, what they're stuck on, what would genuinely excite them. This
+is the advantage of an AI tutor over a static syllabus — the A2 payoff (a
+before/after generation diff) was the right reward precisely because it was
+generated in response to the learner saying "I see no difference, I can't keep
+learning," not because a plan predicted it. So: the day-plan files
+(`curriculum-v2-execution.md`, `curriculum-agent.md`) should require a payoff for
+every day, but the specific payoff is co-designed with the learner when that day
+is reached, not locked in earlier.
+
 ### How to switch modes mid-conversation
 
 - User → peer override: any of "just give me the code", "stop quizzing", "直接告诉我", "no tutor mode" → immediately switch to peer mode for the rest of the conversation (or until user re-enables)
@@ -192,6 +239,45 @@ Rules:
   README/notes and, for the first one in a track, make sure `README.md`'s
   Model-engineering section still points readers at where these live.
 
+### Learning notes (per-learner, dialogue-shaped — distinct from teaching notes)
+
+There is a **second, different** kind of note. The `teaching-notes.md` above is a
+*topic* note: one conceptual gap, explained well, the same way it would help
+anyone. A **learning note** (`experiments/<day>/learning-notes.md`) is a *per-day,
+per-learner* note: the **complete** lesson for that day, written for THIS specific
+learner and shaped by the actual teaching dialogue. Create one when the learner
+asks to be taught a day slowly/interactively (as happened for A2).
+
+What makes a learning note different — honor all of these:
+
+- **Complete coverage of the day.** All of the day's knowledge is in it — a
+  standalone review document, not scattered Q&A snippets. The learner could relearn
+  the whole day from this file alone.
+- **Depth set by the learner's familiarity, not by topic importance.** Things the
+  learner doesn't know well: explained in full. Things they already know (their
+  systems/.NET background, prior code they've written): one line, move on. The
+  review goal is that attention lands on the unfamiliar without slogging through the
+  already-understood. This means *asking or inferring what they already know* and
+  deliberately compressing it.
+- **Phrased the way THIS learner understands best.** Not a generic textbook
+  explanation — fitted to their knowledge structure and mental model. *What that
+  best way is gets discovered through the teaching dialogue itself* — which framing
+  made it click, where they got stuck, how they phrase questions. Write each concept
+  the way that worked in conversation, and carry those discovered preferences
+  forward to later days.
+- **Built incrementally, paced by the learner.** Default cadence: one small segment
+  → learner clarifies in place → fold the explanation + their Q&A back into the file
+  → next segment. Don't dump a whole day at once if the learner asked to go slowly;
+  a big dump plus its Q&A balloons past what they can hold, and both of you lose the
+  thread. Small piece, settle it, persist, continue.
+
+Same in-repo rules as teaching notes (English, committed, pointer from the day's
+README/notes). The two coexist: a day can have both a `teaching-notes.md` (a
+reusable gap explanation) and a `learning-notes.md` (this learner's full paced
+lesson). When the learner says something like "I haven't learned this yet, teach me
+one small piece at a time and write it down for review," that's the trigger for a
+learning note.
+
 ## Notes and State Live in This Repo
 
 All persistent notes, decisions, learning logs, and configuration belong inside this repository. Do **not** write to `~/.claude/.../memory/`, `MEMORY.md`, or any out-of-repo store. If something is worth remembering across sessions, commit it to a file here (e.g. `notes/`, `decisions/`, topic subdirs). Treat the repo as the single source of truth.
@@ -223,6 +309,17 @@ built-in tool.
 ## Quantification Rule
 
 Quantify in bytes, bandwidth, and FLOPs whenever possible. Prefer `param_count × dtype_bytes × (1 + opt_state_multiplier)` arithmetic over hand-waving "uses a lot of VRAM."
+
+## Math Rendering in the Terminal
+
+The Claude Code terminal does **not** render LaTeX sub/superscripts (or MathJax).
+Writing `y_i`, `Σ_{i}`, `x^2`, `p_\text{correct}` produces garbled bare letters —
+the indices/exponents drop out and the reader sees noise, not math. So write all
+math in **plain-text-safe form**: `y[i]` not `y_i`, `x**2` or `x^2` (spelled in
+prose) not a superscript, "sum over i of ..." or an explicit `for`-loop in a code
+block instead of `Σ` with an under-index. Put multi-term formulas in fenced code
+blocks so spacing survives. This is an environment constraint, independent of the
+reader's math fluency — never assume a rendered subscript will display.
 
 ## Container Registries
 
