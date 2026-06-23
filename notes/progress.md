@@ -134,7 +134,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 + A3 done (incl. full per-learner teaching).** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, 500 ex, peak 13.84 GB → corrected A1 to 12 B/param) **+ taught segment-by-segment in `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e, ~720 lines, with a learner diagnostic at the end — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` has the learner's OWN before/after observations + the SFT-definition / dataset trace. | **A4 — gradient accumulation** (`experiments/a04-grad-accum/`). Learner wants to READ the code before running it; A4 is also where A2's hidden training loop (`trainer.train()`) gets unrolled so forward/loss/backward/optimizer become visible (deferred from A2 by learner's choice). |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D4 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming `ExecuteAsync`. D3: tool orchestration — `ToolBatching.Partition` + `Channel` fan-in. D4: control layer — cancel kills the child process **tree** then reaps (`try/finally` + `KillTreeAsync` in `BashTool`). Notes: `agent/experiments/d0{1,2,3,4}-*`. **Astra submodule at `11b6aed`.** D4 tree-kill **verified on WSL Linux** (.NET 10.0.301, 38/38). That run also surfaced + we fixed a Linux-only D2 streaming race (channel completed on `Process.Exited` → dropped all Progress for fast-exiting cmds; now completes on stdout+stderr EOF — Astra PR #5). | D5 — permission pipeline (layered, fail-closed) per `curriculum-agent.md`; OR the deferred D4 control-plane (scenario 1 input-injection / scenario 3 policy — CC models these as one abort signal with a `reason`, see d04 notes). |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D5 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` (default `ClassDefaultPolicy`: Read→Allow, else→Ask, +rule exceptions) + `IUserConfirmation` + `DefaultPermissionEngine`, gated in `RunOneToolAsync` before execute, fail-closed. Notes: `agent/experiments/d0{1..5}-*`. **Astra submodule at `e3b52a6`; 54 tests.** | D6 — context assembly (three-layer cache strategy) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -173,6 +173,57 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-23 — Track D Day 5 done (permission pipeline, Astra PR #6 merged) + resolved a parent-repo merge conflict
+
+**D5 — permission pipeline.** A tool that can run `rm -rf` needs a gate before
+execution. Built layers 1/2/5 of CC's 7-layer model, wired into `RunOneToolAsync`
+BEFORE `ExecuteAsync` so a denied side effect never happens. Tutor mode — the user
+set two design constraints (class-based default "Y" not always-ask; and "make it
+highly modular for SDK release"), which shaped the interfaces; I wrote the code.
+
+Per the post-D4 process fix, D5 **started with a source read**
+(`d05-permission-pipeline/source-reconciliation.md`, written before coding) of CC's
+`utils/permissions/*`. That read gave the design directly: 3-state decision,
+deny>ask>allow, default=ask, the `passthrough`/`NoOpinion` boundary, and CC
+complexities to skip.
+
+What shipped (Astra `e3b52a6`, PR #6):
+- `src/Astra.Core/Permissions/`: `PermissionDecision` (Allow/Deny/Ask — 3-state,
+  never a bool; Ask is a suspension that calls a human BEFORE the side effect),
+  `PolicyVerdict` (+NoOpinion at the policy boundary only), `PermissionRule`
+  (toolName + optional command prefix, deny>ask>allow), three interfaces, and the
+  defaults `ClassDefaultPolicy`/`AlwaysAskPolicy` + `DefaultPermissionEngine`.
+- Modularity (the SDK requirement): `IPermissionPolicy` (WHAT — primary swap point,
+  `ValueTask` so a host can do I/O without sync-over-async deadlock),
+  `IUserConfirmation` (HOW an ask resolves — the only async step), `IPermissionEngine`
+  (orchestration, escape hatch). Independent, composable.
+- `AgentLoop` gains optional `IPermissionEngine?` (null = unguarded, backward-compat
+  — the pre-D5 38 tests unchanged). Deny short-circuits: reason → LLM tool_result +
+  `AgentEvent.ToolDenied`. Allow may rewrite args.
+- Two fail-closed points clarified: Classify (D2) → unknown tool = `Other` (strictest
+  class); rule-match (D5) → unpoliced call = `Ask` interactive / `Deny` headless.
+- Tests +16 (**54/54**): policy decision table, engine 3-state + headless deny, and
+  the load-bearing `DeniedCall_ToolNeverRuns` (a SpyTool asserts Executions==0 — the
+  side effect provably did not run). Notes + teaching-notes (why 3-state, the two
+  fail-closed points) in `agent/experiments/d05-permission-pipeline/`.
+
+Deferred (cited): full InputSchema validation (Layer 1 is tool-existence only),
+wildcard/exact rule matching + source tiers, per-tool checkPermissions veto, a CLI
+confirmation UI (`IUserConfirmation` has no terminal impl yet — CLI still builds the
+loop with no engine), and permission modes (bypass/acceptEdits/plan/dontAsk).
+
+**Merge conflict resolved.** Pulling main brought 7 commits of parallel Track A
+work (A2/A3 + an A4 cross-machine handoff) done on another machine. Only
+`notes/progress.md` conflicted — append-only LOG, both machines added top entries.
+Resolved by keeping BOTH (Track A and Track D entries), deleting the markers; the
+LEARNING STATE table auto-merged cleanly (A row + D row changed independently). No
+content lost, no duplicate entries. The D5 work was uncommitted at the time and
+stayed out of the merge commit (`d574188`), then was committed separately as above.
+
+**Next:** D6 — context assembly (three-layer cache strategy). OR finish a deferred
+thread: D5's CLI confirmation UI + InputSchema validation, or D4's control-plane
+(mid-turn interrupt as an abort-reason branch, per d04 source reconciliation).
 
 ### 2026-06-22 — D4 Linux-verified on WSL; fixed a Linux-only D2 streaming race; D4 source-of-truth reconciliation
 
