@@ -71,37 +71,44 @@ then "so go try it."
 HOOK     "83 seconds, 13.84 GB, on a box on my desk." + "it's the same process as
           pretraining, just less of it" → two questions stop everyone. Today = these two.
 
+MAP      "Fine-tuning is ONE box on a bigger map." Two orthogonal axes:           ~1.5 min
+  1  Axis 1 = which STAGE (pretrain → SFT / preference / distillation);
+     Axis 2 = how MUCH (full / LoRA / QLoRA). "SFT"≠"LoRA" — different questions.
+       原理: de-fuse the words; distillation = where answers come from (black-box=SFT,
+             white-box=match logits). Locates today = SFT × (full→LoRA→QLoRA).
+                                                          → "into that one box. what does it change?"
+
 ACT 1 — DO I NEED IT?  (Blocker 1)                                       ~11 min
-  1  Demo: before vs after. It changed STYLE.            → "did it learn anything NEW?"
-  2  Pivot: #5 "Paris" byte-identical. Facts did NOT move.
+  2  Demo: before vs after. It changed STYLE.            → "did it learn anything NEW?"
+  3  Pivot: #5 "Paris" byte-identical. Facts did NOT move.
        原理: signal vs entrenchment — gradient only moves what you push on.
                                                           → "so how do I steer it?"
-  3  You DEMONSTRATE behavior, you don't program it (the data + loss masking).
+  4  You DEMONSTRATE behavior, you don't program it (the data + loss masking).
        原理: fine-tuning reweights a distribution; it doesn't add a capability.
                                                           → "then when is it the wrong tool?"
-  4  Decision: new facts→RAG | behavior→fine-tune | small model rivals big one on a vertical.
+  5  Decision: new facts→RAG | behavior→fine-tune | small model rivals big one on a vertical.
        原理: WHY weights are a bad knowledge store, WHY RAG works, + the specialist "aha".
                                                           → "OK, can my machine run it?"
 
 BRIDGE   "That last question is the real wall. Good news: it's multiplication."  ~0.5 min
 
 ACT 2 — HOW MUCH VRAM / WHAT CARD?  (Blocker 2 — CENTERPIECE)             ~14 min
-  5  The unit: a parameter is ONE number. (neuron = w*x+b.)
+  6  The unit: a parameter is ONE number. (neuron = w*x+b.)
        原理: why depth needs the nonlinearity; where the billions come from.
                                                           → "how many bytes per number?"
-  6  Inference: 2 bytes/param. 70B → 140 GB to load.
+  7  Inference: 2 bytes/param. 70B → 140 GB to load.
        原理: what's in the 2 bytes; the KV cache is the other inference cost.
                                                           → "training needs more. why?"
-  7  Training: 12 bytes/param. param + gradient + optimizer (m, v).   ← CORE
+  8  Training: 12 bytes/param. param + gradient + optimizer (m, v).   ← CORE
        原理: what gradient / m / v actually ARE, and why optimizer state dominates.
                                                           → "70B = 840 GB. impossible. now what?"
-  8  Shrink the multiplier: full 12 → LoRA 2 → QLoRA 0.6.
+  9  Shrink the multiplier: full 12 → LoRA 2 → QLoRA 0.6.
        原理: the weight UPDATE is low-rank — train two skinny matrices, freeze the rest.
                                                           → "which fits a card I can get?"
-  9  Map to real GPUs. 16 GB gaming card does 7B QLoRA; rent an A100 for $1/hr.
+  10 Map to real GPUs. 16 GB gaming card does 7B QLoRA; rent an A100 for $1/hr.
        原理: every cell is derived — VRAM / bytes-per-param. not memorized.
                                                           → "does the arithmetic actually hold?"
-  10 Proof: predicted 12 GB, measured 13.84.
+  11 Proof: predicted 12 GB, measured 13.84.
        原理: the gap = activations, the one term ×12 omits (workload-dependent).
 
 CLOSE    Both blockers answered, from principle. Open tools, ~100 lines. Go try it.  ~2 min
@@ -110,9 +117,9 @@ CLOSE    Both blockers answered, from principle. Open tools, ~100 lines. Go try 
 Two optional deep-dives live OFF this spine, pulled in ONLY if time allows or a
 question demands — they must never interrupt the arc:
 - **(D1) Why optimizer state needs fp32 while everything else is fine at 16-bit.** A
-  detail of slide 7. First thing cut if long; ideal Q&A answer.
+  detail of slide 8. First thing cut if long; ideal Q&A answer.
 - **(D2) The fp32 master-weight copy (12 vs 16 bytes/param).** Be ready for the
-  engineer who's read about mixed precision — see slide 7's honesty note.
+  engineer who's read about mixed precision — see slide 8's honesty note.
 
 ---
 
@@ -146,15 +153,94 @@ already running.
 > much GPU does it take — can the machine on your desk run it at all?* That's the whole
 > talk. I answer both from first principles, and you walk out able to try this yourself."
 
-Transition → "Take the first one. Fastest way to answer 'what does fine-tuning do' is
-to show you, then explain *why* it does that — including why it does things your prompt
-tricks can't, and can't do things you'd assume it could."
+Transition → "But 'fine-tuning' is just *one box* on a bigger map. Before the two
+questions, let me put the map up — and clear up a few words this room uses
+interchangeably — so you know exactly where today sits."
+
+---
+
+# THE MAP (orientation — before the two questions)
+
+## Slide 1 — "Fine-tuning" is one box on a bigger map
+
+**← from hook:** "you keep hearing SFT, LoRA, RLHF, distillation thrown around. They're
+not competing options on one list — they live on TWO independent axes. Here's the map."
+
+This is an **orientation slide, not a topics list.** It earns its place (the spine cuts
+anything that serves neither blocker) by doing one job: it *locates today* on the map and
+de-fuses words the audience mixes up, so Act 1 ("which stage = SFT") and Act 2 ("how much
+= full/LoRA/QLoRA") each land as a named axis instead of a new topic. It is NOT a survey
+of training methods — keep it to the two axes and move on.
+
+**The one idea: two ORTHOGONAL axes.**
+```
+Axis 1 — WHICH STAGE / what signal it learns from:
+   Pretraining     next-token on the whole internet → the base model (someone else paid)
+     ↓ post-training, on YOUR data:
+   SFT             imitate (instruction → answer) pairs            ← TODAY
+   Preference      RLHF / DPO: learn from chosen-vs-rejected
+   Distillation    copy a stronger TEACHER model
+
+Axis 2 — HOW MUCH you touch (applies to ANY stage above):
+   Full            every parameter      ×12 bytes
+   LoRA            ~1% added slice       ×2
+   QLoRA           LoRA + 4-bit base     ×0.6                       ← Act 2
+```
+
+**原理 (the de-fusing — this is what the audience actually gets):**
+- **The two axes are orthogonal.** Picking on Axis 1 doesn't pick on Axis 2:
+  `full-SFT`, `LoRA-SFT`, `LoRA-DPO` are all real combinations. "Is this LoRA or SFT?"
+  is a category error — like "is this car a sedan or a diesel?" Two different questions.
+- **"SFT" answers *which stage*; "LoRA" answers *how much*.** Engineers conflate them
+  because they hear both as "ways to train." Naming the two axes is the whole payoff.
+- **Data shape + where "supervised" comes from (a question this audience WILL have —
+  "isn't all training data Q&A?").** Pretrain data is NOT instruction→answer — it's
+  **raw continuous text** (scraped web / books / code), trained on plain next-token
+  ("The capital of France is ___" appeared millions of times → Paris gets carved in; it
+  was never *taught* as a Q&A item). The "answer key" is where the supervision label
+  comes from, and that's literally what the words mean:
+  - **Pretrain = self-supervised** — the label is the text's *own next token*, free, no
+    human annotation.
+  - **SFT = supervised** — each row's `answer` half is a **human- (or teacher-) written
+    correct answer** the model aligns to; that written answer IS the supervision. *That's
+    the "S" in SFT.* (Preference/DPO is supervised too, but by chosen-vs-rejected pairs,
+    not one gold answer.)
+  - Mechanism is the SAME next-token throughout (ties back to the hook's "same process");
+    what changes across Axis 1 is the **data shape** (unstructured text → Q&A pairs) and
+    **where the loss is computed** (all tokens → answer-half only = loss masking, slide 4).
+- **Distillation is NOT a second mechanism — it only sets where the training answers
+  COME FROM.** This is the one the learner asked about; answer it precisely, two kinds:
+  - **black-box (response-based):** the teacher *generates text*; you take
+    `(prompt, teacher's answer)` and run **ordinary SFT** on it. **This is exactly the
+    "synthetic-data SFT" that's hyped online** — Alpaca (GPT-3.5 generated 52k rows to
+    train LLaMA) is this. So "isn't distillation just using another model's output to SFT
+    your own?" → **yes, that's black-box distillation; it IS SFT, just with model-written
+    `output` instead of human-written.**
+  - **white-box (logit-based — Hinton 2015, the original meaning of the word):** the
+    student matches not the teacher's *single chosen token* but the teacher's *entire
+    ~120k-long probability distribution* (logits / soft targets), via KL + a temperature.
+    The soft info ("2nd-likeliest 20%, 3rd 5%") carries far more than one hard token.
+    **Constraint:** you need the teacher's logits — distilling GPT-4 can only be black-box
+    (the API won't give full logits); white-box needs a teacher whose internals you own.
+  - (This is exactly what curriculum B16 builds hands-on, both kinds. Today: name it, move on.)
+
+**Altitude check:** do NOT explain what RLHF/RAG ARE here — the audience uses them. This
+slide only *arranges* the words they already know (below-the-API tidying), it doesn't
+teach the words. If it starts feeling like a survey, you've overstayed — the payoff is
+the two-axes framing plus the distillation de-fuse, nothing more.
+
+Say: "'SFT' tells you *which stage*; 'LoRA' tells you *how much of the model you touch* —
+different axes, stop fusing them. Today we zoom into one box: **SFT**, and walk it down
+the second axis — full → LoRA → QLoRA — for the memory math."
+
+Transition → "So we're inside one box now — SFT — and we'll read its memory cost down
+that second axis. First question of the two: what does it even change? Let me show you."
 
 ---
 
 # ACT 1 — DO I NEED IT?  (Blocker 1)
 
-## Slide 1 — The demo: before vs after (the hook made real)
+## Slide 2 — The demo: before vs after (the hook made real)
 
 **← from hook:** "what does fine-tuning turn the model into? Look:"
 
@@ -175,7 +261,7 @@ it's exactly why the *next* thing did NOT move.
 Transition → "Sure, the *style* changed. But the question an engineer should ask next:
 did it actually learn anything new? Did it get smarter?"
 
-## Slide 2 — The pivot: it changed style, NOT facts  ← mechanism slide of Act 1
+## Slide 3 — The pivot: it changed style, NOT facts  ← mechanism slide of Act 1
 
 **← from demo:** "watch what did NOT change."
 
@@ -206,7 +292,7 @@ moved and Paris didn't. That single rule decides whether you should fine-tune at
 Transition → "If fine-tuning only moves what you push on, then *how you push* — the data
 — is the entire lever. That's the most hands-on slide today."
 
-## Slide 3 — How you steer it: you demonstrate, you don't program
+## Slide 4 — How you steer it: you demonstrate, you don't program
 
 **← from pivot:** "you just saw it moves only what you push on — here's how you push."
 
@@ -239,7 +325,7 @@ Transition → "Which tells you precisely when fine-tuning is the WRONG tool. If
 lever is 'reweight toward examples,' then a fact it's never seen has no example to
 reweight toward…"
 
-## Slide 4 — The decision: when is fine-tuning the right tool?  ← the conceptual payoff of Act 1
+## Slide 5 — The decision: when is fine-tuning the right tool?  ← the conceptual payoff of Act 1
 
 **← from steering:** "…so fine-tuning can teach a *behavior to imitate*, but it's the
 wrong tool for a *fact it's never reliably seen*. Here's the decision, with the why:"
@@ -263,7 +349,7 @@ First, kill the myth honestly: it's NOT that fine-tuning *can't* change a fact �
 full fine-tuning updates every weight, you CAN overwrite facts if you push hard.
 It's that it's the wrong TOOL, for four mechanical reasons:
 
-1. SIGNAL vs ENTRENCHMENT (slide 2): a few examples can't overpower an association
+1. SIGNAL vs ENTRENCHMENT (slide 3): a few examples can't overpower an association
    that thousands of pretraining examples carved in. Weak push, entrenched value, no move.
 
 2. PUSH HARD ENOUGH AND YOU BREAK THINGS: to force a handful of new facts in, you train
@@ -305,8 +391,8 @@ No contradiction — the two claims govern different things:
 Those vertical tasks (classify, extract, reformat, discriminate) don't test KNOWLEDGE —
 they test BEHAVIOR: "will it follow your exact spec and format?" The 7B already HAS the
 underlying capability from pretraining; it just doesn't emit it your way by default.
-Fine-tuning ELICITS / ALIGNS that latent capability (= slide 3's reweight-an-existing-
-distribution), it does NOT install a new fact. Knowledge stayed put (slide 2); SKILL got
+Fine-tuning ELICITS / ALIGNS that latent capability (= slide 4's reweight-an-existing-
+distribution), it does NOT install a new fact. Knowledge stayed put (slide 3); SKILL got
 concentrated.
 
 This is literally the Gekhman paper's own framing: "factual knowledge is mostly acquired
@@ -355,7 +441,7 @@ not a mystery, it's multiplication. And I can show you the multiplication."
 > and the answer is always `param_count × bytes_per_param`, then match to a GPU. Each
 > slide adds one factor and explains *why* that factor is what it is.
 
-## Slide 5 — The unit: a parameter is just one number
+## Slide 6 — The unit: a parameter is just one number
 
 **← from bridge:** "before counting bytes, agree on what we count. What's a 'parameter'?"
 
@@ -392,7 +478,7 @@ it's just 'a count of numbers,' the memory is a napkin multiplication."
 Transition → "So how many bytes does one number cost? Start simple — you're not even
 training yet, you just want to RUN the model."
 
-## Slide 6 — Just running it (inference): 2 bytes per parameter
+## Slide 7 — Just running it (inference): 2 bytes per parameter
 
 **← from unit:** "each parameter is a number. how big is a number?"
 
@@ -423,7 +509,7 @@ part worth memorizing."
 Transition → "Why is training more expensive than running? Because for *every single
 parameter*, you now store more than just the number. Three more things, in fact."
 
-## Slide 7 — Training: 12 bytes per parameter, not 2  ← THE CORE SLIDE
+## Slide 8 — Training: 12 bytes per parameter, not 2  ← THE CORE SLIDE
 
 **← from inference:** "running = 1 copy of each number. training = the number plus three
 more, per parameter."
@@ -486,14 +572,14 @@ the hog — and that's the part the next trick throws away."
 Transition → "Look at the 70B row: 840 GB. No single box has that. So is 70B fine-tuning
 just impossible for us? No — and the fix is the only other concept you need."
 
-## Slide 8 — Shrink the multiplier: full → LoRA → QLoRA
+## Slide 9 — Shrink the multiplier: full → LoRA → QLoRA
 
 **← from the core:** "840 GB is impossible. So we stop paying 12 bytes for 99% of the
 parameters. Here's the mechanism that lets us."
 
 | Method | What trains | bytes/param | The idea |
 |---|---|---|---|
-| **Full** | ALL parameters | **~12** | retrain everything (slide 7) |
+| **Full** | ALL parameters | **~12** | retrain everything (slide 8) |
 | **LoRA** | a tiny ~1% added slice; freeze the rest | **~2** | only the slice gets gradient + optimizer |
 | **QLoRA** | LoRA + 4-bit frozen base | **~0.6** | also compress the part you're not training |
 
@@ -519,7 +605,7 @@ small A/B adapters in bf16. Now even the frozen 99% costs 0.5 bytes → effectiv
 bytes/param. **This is why people fine-tune 70B on a single 24–48 GB GPU.**
 
 Say: "Same move every time — stop paying the full 12 bytes for parameters you're not
-training. The arithmetic from slide 7 is unchanged; you're just dropping
+training. The arithmetic from slide 8 is unchanged; you're just dropping
 bytes-per-param, because the *update* turns out to be low-rank, so you train two tiny
 matrices instead of the whole thing."
 
@@ -531,7 +617,7 @@ matrices instead of the whole thing."
 Transition → "So you've got three numbers — 12, 2, 0.6 bytes/param. Last step is the one
 you actually want: which fits on a card you can get your hands on?"
 
-## Slide 9 — Map it to real GPUs: what card do YOU need
+## Slide 10 — Map it to real GPUs: what card do YOU need
 
 **← from shrink:** "pick the method that fits your VRAM. This table is the literal
 answer to 'what card do I need' — and every cell is *derived*, not memorized."
@@ -547,7 +633,7 @@ answer to 'what card do I need' — and every cell is *derived*, not memorized."
 `max_param_count = VRAM / bytes_per_param`. A 24 GB card, full fine-tune (12 B/param):
 24 GB / 12 = 2B params → "1–3B full." Same card, QLoRA (0.6 B/param): 24 / 0.6 = 40B →
 "up to ~33B" once you leave headroom for activations. You don't memorize this table —
-you *derive* any row of it with the two numbers from slides 7 and 8.
+you *derive* any row of it with the two numbers from slides 8 and 9.
 
 Say:
 - "A **16 GB gaming GPU** already fine-tunes a 7B model with QLoRA — a card lots of you
@@ -555,7 +641,7 @@ Say:
 - "No card? **Rent an A100 for ~$1–2/hour** (RunPod / Lambda / Vast). A small fine-tune
   is minutes — costs you a coffee."
 - "The only thing changing down this table is the *method* — full → LoRA → QLoRA — not
-  the idea. Pick the method that fits your VRAM, using the arithmetic from slide 7."
+  the idea. Pick the method that fits your VRAM, using the arithmetic from slide 8."
 
 > HONESTY MARKER (hold this line): the ONLY measured number is **1B full SFT = 13.84 GB
 > on the GX10**. Every other cell is *estimated from param × bytes* (matches widely
@@ -567,13 +653,13 @@ Say:
 Transition → "And 'I trust the arithmetic' deserves proof — everything I just showed is
 a prediction. Did it hold when I actually ran it?"
 
-## Slide 10 — The proof: prediction vs reality
+## Slide 11 — The proof: prediction vs reality
 
 **← from the GPU table:** "all arithmetic. here's the one place I checked it against a
 real run."
 
 ```
-Predicted (slide 7):  1B × 12 bytes  ≈  12 GB
+Predicted (slide 8):  1B × 12 bytes  ≈  12 GB
 Measured  (A2 run):                    13.84 GB peak
 ```
 
@@ -622,42 +708,43 @@ rent for coffee money. Go try it."
 | Segment | Slides | Target |
 |---|---|---|
 | Hook | — | 1.5 min |
-| Act 1 — do I need it? | 1–4 | ~11 min |
+| Map (orientation — two axes) | 1 | ~1.5 min |
+| Act 1 — do I need it? | 2–5 | ~11 min |
 | Bridge | — | 0.5 min |
-| **Act 2 — VRAM / card (centerpiece)** | **5–10** | **~14 min** |
+| **Act 2 — VRAM / card (centerpiece)** | **6–11** | **~14 min** |
 | Close | — | ~2 min |
 | Buffer / overflow into Q&A | D1, D2 | — |
 
 If running long, cut order: D1 (fp32 detail) → trim Act 1 demo to 2 pairs → shorten
-slide 8's QLoRA paragraph. Do NOT cut the `原理` beats on slides 2, 4, 7, 8 — those ARE
+slide 9's QLoRA paragraph. Do NOT cut the `原理` beats on slides 3, 5, 8, 9 — those ARE
 the "principle over conclusion" the audience came for, and the answer to both blockers.
 
 **Mechanisms YOU must be solid on before presenting (this audience WILL probe — they
 use these models more than you do, just from outside):**
-- Slide 2/4: signal vs entrenchment; why "fine-tuning can't add facts" is too strong
+- Slide 3/5: signal vs entrenchment; why "fine-tuning can't add facts" is too strong
   (it's the wrong *tool*, not impossible) — see the four-reason breakdown.
-- Slide 4: the specialist "aha" — why a fine-tuned 7B can rival a frontier model *on one
+- Slide 5: the specialist "aha" — why a fine-tuned 7B can rival a frontier model *on one
   narrow vertical* (capacity concentration), and why that's an *insight about the market*,
   NOT a recommendation for this room (we keep using Opus; tokens are company-paid). Be
   ready to defend the scope limit: narrow well-defined tasks only, not general reasoning.
   Backing evidence verified and ready: LoRA Land (arXiv:2405.00732) for the 7B-rivals-GPT-4
   claim; Gekhman et al. (arXiv:2405.05904) for the fine-tuning-on-new-facts → hallucination
   claim. See the References section below — know these two before presenting.
-- Slide 7: what m and v actually are (momentum / per-param adaptive step), why 8 of 12
+- Slide 8: what m and v actually are (momentum / per-param adaptive step), why 8 of 12
   bytes are optimizer state.
-- Slide 8: LoRA = the weight *update* is low-rank → train two skinny matrices B·A.
-- Slide 10: the gap is activations (workload-dependent), not a formula error.
+- Slide 9: LoRA = the weight *update* is low-rank → train two skinny matrices B·A.
+- Slide 11: the gap is activations (workload-dependent), not a formula error.
   (If any of these is shaky, walk through it before Friday — don't present a mechanism
   you can't defend to a room that will push back.)
 
 **Placeholders to fill (you):**
-- Slide 3: one real `alpaca-cleaned` row (instruction / input / output).
-- (Optional) Slide 7: A2 loss step 1 vs final, if you want to show loss sliding down.
+- Slide 4: one real `alpaca-cleaned` row (instruction / input / output).
+- (Optional) Slide 8: A2 loss step 1 vs final, if you want to show loss sliding down.
 
 **Numbers to cross-check before Friday:**
-- Slide 8 per-method bytes (~0.6 QLoRA, ~2 LoRA) against
+- Slide 9 per-method bytes (~0.6 QLoRA, ~2 LoRA) against
   `experiments/a01-mem-budget/notes.md`.
-- Slide 7: confirm whether the A2 run used an fp32 master copy (12 vs 16 bytes) — see
+- Slide 8: confirm whether the A2 run used an fp32 master copy (12 vs 16 bytes) — see
   the D2 honesty note; confirm the 13.84 GB / 83 s figures and base model path.
 
 **Demo text:** pull pairs #6, #1, #5 (and #10 for the honesty beat) verbatim from
@@ -675,7 +762,7 @@ the first side.
 
 The two claims most likely to draw "prove it / which paper?" are both backed and checked:
 
-- **Slide 4 — "fine-tuning to add facts encourages hallucination."**
+- **Slide 5 — "fine-tuning to add facts encourages hallucination."**
   Gekhman, Yona, Aharoni, Eyal, Feder, Reichart, Herzig — *"Does Fine-Tuning LLMs on New
   Knowledge Encourage Hallucinations?"*, EMNLP 2024. https://arxiv.org/abs/2405.05904
   Verified findings to quote: examples introducing *new* facts are learned significantly
@@ -685,7 +772,7 @@ The two claims most likely to draw "prove it / which paper?" are both backed and
   pretraining; fine-tuning teaches the model to *use* it more efficiently, not to absorb
   new facts. (Directly supports both the "entrenchment" mechanism and reason #4.)
 
-- **Slide 4 — "a fine-tuned 7B can rival a frontier model on a narrow vertical."**
+- **Slide 5 — "a fine-tuned 7B can rival a frontier model on a narrow vertical."**
   Zhao, Wang, Abid, Angus, Garg, Kinnison, Sherstinsky, Molino, Addair, Rishi (Predibase)
   — *"LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report"*, 2024.
   https://arxiv.org/abs/2405.00732
@@ -696,9 +783,9 @@ The two claims most likely to draw "prove it / which paper?" are both backed and
   everything. The demo served 25 fine-tuned Mistral-7B adapters on a single 80 GB A100.
 
 Background concepts referenced (well-known, cite only if asked for the original):
-- **LoRA** (slide 8): Hu et al., *"LoRA: Low-Rank Adaptation of Large Language Models"*,
+- **LoRA** (slide 9): Hu et al., *"LoRA: Low-Rank Adaptation of Large Language Models"*,
   ICLR 2022. https://arxiv.org/abs/2106.09685 — the "weight update is low-rank" claim.
-- **QLoRA / NF4 4-bit** (slide 8): Dettmers et al., *"QLoRA: Efficient Finetuning of
+- **QLoRA / NF4 4-bit** (slide 9): Dettmers et al., *"QLoRA: Efficient Finetuning of
   Quantized LLMs"*, NeurIPS 2023. https://arxiv.org/abs/2305.14314 — the ~0.6 B/param path.
 
 > Sourcing note: these four were confirmed via direct arXiv fetch this session. The

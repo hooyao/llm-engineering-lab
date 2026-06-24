@@ -130,10 +130,53 @@ notes:`<b>开场,先把人定位。</b>不要解释 RAG / prompt 是什么 —�
 开场白:<span class="say">"在座都是 AI 重度用户。RAG、agent、各种 prompt 技巧你们都玩过 —— 但全都是从 API <b>外面</b>用它,你调用模型,从不打开它。今天往下走一层:同一个模型,跑在你自己机器上,你来改它的 weight。"</span><br>
 <b>原理(先去神秘化):</b>fine-tuning 跟 pretraining 是<b>同一个过程</b> —— predict next token、measure error、nudge weights —— 只是数据从整个互联网换成你的一小撮。没有第二套神秘机制,同样的 gradient descent,更少的 step。<br>
 <b>埋两条主线:</b><span class="say">"两个问题挡在你和动手之间。一:fine-tuning 到底改变什么,什么时候才轮到它出场?二:要多少 GPU,我桌上这台跑得动吗?整场就答这两个。"</span><br>
-<span class="trans">→ 转场:"先看第一个。回答'fine-tuning 做了什么'最快的方式是直接给你看。"</span>`
+<span class="trans">→ 转场:"但 'fine-tuning' 只是一张更大地图上的<b>一个框</b> —— 先用一页把地图摆出来,顺手把几个被你们混着用的词理清,你就知道今天站在哪。"</span>`
 },
 
-/* 1 — DEMO */
+/* 1 — THE MAP / taxonomy (orientation) */
+{
+body:`<div class="kicker">Before the two questions · the map</div>
+<h2>"Fine-tuning" is <span class="em">one box</span> on a bigger map</h2>
+<div class="cols" style="gap:24px">
+  <div class="card">
+    <div class="tag">Axis 1 · which stage — what it learns from</div>
+    <p style="font-size:19px;margin:.35em 0"><b>Pretraining</b> — next-token on the whole internet → the base model
+       <span class="muted">(someone else paid millions)</span></p>
+    <p class="muted" style="font-size:16px;margin:.2em 0 .35em">↓ &nbsp;post-training · on <b>your</b> data</p>
+    <p style="font-size:19px;margin:.3em 0"><b class="em">SFT</b> — imitate (instruction → answer) pairs <span class="em">← today</span></p>
+    <p style="font-size:19px;margin:.3em 0"><b>Preference</b> — RLHF / DPO: learn from <span class="em2">chosen vs rejected</span></p>
+    <p style="font-size:19px;margin:.3em 0"><b>Distillation</b> — copy a stronger <span class="em2">teacher</span> model<br>
+       <span class="muted" style="font-size:15.5px">black-box = SFT on its text · white-box = match its full logit distribution</span></p>
+  </div>
+  <div class="card">
+    <div class="tag">Axis 2 · how much you touch — any stage above</div>
+    <p style="font-size:19px;margin:.35em 0"><b>Full</b> — every parameter <span class="muted">· ×12 bytes</span></p>
+    <p style="font-size:19px;margin:.35em 0"><b>LoRA</b> — a ~1% added slice, freeze the rest <span class="muted">· ×2</span></p>
+    <p style="font-size:19px;margin:.35em 0"><b>QLoRA</b> — LoRA + 4-bit frozen base <span class="muted">· ×0.6</span> <span class="em2">← Act 2</span></p>
+    <p class="muted" style="font-size:16.5px;margin-top:14px;line-height:1.45">
+       <b>Orthogonal</b> to Axis 1 — <span class="em">full-SFT, LoRA-SFT, LoRA-DPO</span> are all real combos.
+       Picking one here doesn't pick one there.</p>
+  </div>
+</div>
+<div class="note-line"><b class="em">"SFT"</b> answers <span class="em">which stage</span>. <b class="em2">"LoRA"</b> answers <span class="em2">how much</span>. Different axes — don't fuse them. &nbsp;Today = <b>SFT × (full → LoRA → QLoRA)</b>.</div>`,
+notes:`<b>这是一页定位图 —— 不是讲 8 个话题,是把今天的题目放进全景,顺便清理被混用的词。</b>这屋子的人 SFT/LoRA/RLHF/蒸馏全<b>听过</b>,但经常混着用 —— 给他们一张"这些词怎么排"的图,是 below-the-API 的整理,不是教 RAG 是什么,不冒犯。<br>
+<div class="t">核心洞察 —— 两条<b>正交</b>的轴(这页唯一要让他们记住的):</div>
+· <b>轴 1 = 哪个阶段 / 学什么信号</b>:pretraining(整个互联网 next-token,造出 base)→ post-training(用你的数据):<b>SFT</b>(模仿 instruction→answer)、<b>preference</b>(RLHF/DPO,从 chosen vs rejected 学)、<b>distillation</b>(学一个更强的 teacher)。<br>
+<div class="t">数据形态 —— 会被问"训练数据不都是问答吗?"(常见错位直觉):</div>
+· <b>Pretrain 数据 = 原始连续文本,不是问答</b> —— 爬来的网页/书/代码,一大段一大段,没有 instruction/answer 结构。目标还是 next-token:遮住后文猜下一个词。"Paris 是法国首都"就是这么学的 —— "The capital of France is ___"在网上出现过千万次,后面几乎都是 Paris,模型见多了就刻进 weight,<b>从没被当成一道问答题教过</b>。<br>
+· <b>"标准答案"从哪来,决定了 "supervised" 这个词</b>:pretrain 是 <b>self-supervised(自监督)</b> —— 标准答案就是文本<b>自己的下一个 token</b>,无人工标注、免费自带。SFT 是 <b>supervised(监督)</b> —— 每条数据的 <code>answer</code> 半边是<b>人(或 teacher 模型)写好的标准答案</b>,模型去对齐它,这个标准答案就是监督信号。<span class="say">"SFT 的 S 就是这么来的 —— supervised:有人给了标准答案。pretrain 没人给,答案是文本自己的下一个词,所以那叫 self-supervised。机制全程是同一个 next-token,变的只是'答案从哪来'。"</span><br>
+· 接得上 HOOK:这正是"同一个过程"的字面意思 —— pretrain 和 SFT <b>同样是 next-token + 调 weight</b>,差别只在数据形态(无结构文本 vs 问答配对)和 loss 算在哪(全部 token vs 只在 answer 半 = loss masking,slide 4 讲)。<br>
+· <b>轴 2 = 你动多少模型</b>:full(全部 param,×12)、LoRA(~1% 的小切片,×2)、QLoRA(LoRA+4-bit base,×0.6)。<b>这条轴跟轴 1 无关</b> —— full-SFT、LoRA-SFT、LoRA-DPO 都成立。<br>
+<span class="say">"'SFT' 回答的是<b>哪个阶段</b>,'LoRA' 回答的是<b>动多少</b> —— 不是同一个问题,别混。问'这是 LoRA 还是 SFT'就像问'这车是轿车还是柴油的' —— 两个维度。"</span><br>
+<div class="t">蒸馏(有人一定会问,也是我自己最初的疑问):</div>
+蒸馏<b>不是第二套机制</b>,它只是规定"训练答案<b>从哪来</b>"。两种:<br>
+· <b>黑盒(black-box)</b>:teacher 生成文本 → 拿 (prompt, teacher答案) 当普通 SFT 数据。<b>这就是网上炒的"合成数据 SFT"</b> —— Alpaca 用 GPT-3.5 生 52k 数据训 LLaMA 就是它。<span class="say">"所以你说的'拿别的模型生成数据做 SFT' —— 完全对,那叫黑盒蒸馏,本质就是 SFT,只是 output 是模型写的不是人写的。"</span><br>
+· <b>白盒(white-box,Hinton 2015 蒸馏的本义)</b>:student 不只匹配 teacher 挑出的<b>那一个 token</b>,而是匹配 teacher 输出的<b>整条 ~120k 概率分布(logits / soft targets)</b>,用 KL + temperature。那个"第二可能 20%、第三 5%"的软信息,比一个硬 token 信息量大得多。<b>限制</b>:要能拿到 teacher 的 logits —— 蒸 GPT-4 只能黑盒(API 不给完整 logits),蒸你自己的大模型才能白盒。<br>
+(这正是 curriculum B16 那天动手做的两种;今天只需点到为止。)<br>
+<span class="trans">→ 转场:"今天就钻进这<b>一个框</b> —— SFT,再沿 full→LoRA→QLoRA 看它的内存。先看第一个问题:它到底改变了什么?直接给你看。"</span>`
+},
+
+/* 2 — DEMO */
 {
 body:`<div class="kicker"><span class="act">Act 1 — Do I need it?</span> · the demo</div>
 <h2>Same model, same prompts — before vs after</h2>
@@ -157,7 +200,7 @@ notes:`<b>这是钩子落地 —— 先给观众看,再讲为什么。</b>真实
 <span class="trans">→ 转场:"style 是变了。但工程师该问的下一个问题:它真学到新东西了吗?它变聪明了吗?"</span>`
 },
 
-/* 2 — PIVOT: style not facts */
+/* 3 — PIVOT: style not facts */
 {
 body:`<div class="kicker"><span class="act">Act 1</span> · the pivot — the load-bearing idea</div>
 <h2>It changed <span class="em">style</span> — not <span class="em2">facts</span></h2>
@@ -184,7 +227,7 @@ notes:`<b>第一幕最重要的一页 —— 整个上半场的承重机制:sign
 <span class="trans">→ 转场:"既然它只移动你推的东西,那'你怎么推' —— 数据 —— 就是全部的杠杆。"</span>`
 },
 
-/* 3 — you demonstrate (data) */
+/* 4 — you demonstrate (data) */
 {
 body:`<div class="kicker"><span class="act">Act 1</span> · the lever</div>
 <h2>You <span class="em">demonstrate</span> behavior — you don't program it</h2>
@@ -206,7 +249,7 @@ notes:`<b>本幕最具体的一页 —— 一定要展示一条真实数据。</
 <span class="trans">→ 转场:"这正好告诉你什么时候 fine-tuning 是<b>错</b>的工具 —— 一个它从没见过的 fact,没有样本可供 reweight…"</span>`
 },
 
-/* 4 — decision table + insight */
+/* 5 — decision table + insight */
 {
 body:`<div class="kicker"><span class="act">Act 1</span> · the decision — payoff of part 1</div>
 <h2>When is fine-tuning the right tool?</h2>
@@ -245,7 +288,7 @@ notes:`<b>第一幕的认知 payoff。注意:这是纯知识分享,对这屋子<
 <span class="trans">→ 桥接第二幕:"假设你排除了 prompt 和 RAG,确实需要改 behavior,要 fine-tune 了。下一个问题才是真正挡住人的:我的机器跑得动吗?好消息 —— 这不是玄学,是乘法。"</span>`
 },
 
-/* 5 — parameter = one number */
+/* 6 — parameter = one number */
 {
 body:`<div class="kicker"><span class="act">Act 2 — How much VRAM / what card?</span> · the unit</div>
 <h2>A parameter is just <span class="em">one number</span></h2>
@@ -277,7 +320,7 @@ notes:`<b>第二幕第一步 —— 把 parameter 变具体,否则没法算 <cod
 <span class="trans">→ 转场:"那一个数花几个 byte?从最简单的开始 —— 你还没训练,只想<b>跑</b>这个模型。"</span>`
 },
 
-/* 6 — inference 2 bytes */
+/* 7 — inference 2 bytes */
 {
 body:`<div class="kicker"><span class="act">Act 2</span> · just running it</div>
 <h2>Inference: <span class="em">2 bytes</span> per parameter</h2>
@@ -297,7 +340,7 @@ notes:`<b>建立基线:跑一个模型 = 每个 parameter 一份拷贝。</b><br
 <span class="trans">→ 转场:"为什么训练比跑贵?因为对<b>每一个 parameter</b>,你现在存的不只是那个数。其实是多存三样。"</span>`
 },
 
-/* 7 — training 12 bytes (CORE) */
+/* 8 — training 12 bytes (CORE) */
 {
 body:`<div class="kicker"><span class="act">Act 2</span> · the core slide</div>
 <h2>Training: <span class="em">12 bytes</span> per parameter</h2>
@@ -331,7 +374,7 @@ notes:`<b>整场的核心页。慢慢讲。</b><br>
 <span class="trans">→ 转场:"看 70B 那行:840 GB。没有单机有这个。那 70B fine-tuning 对我们就是没戏?不 —— 解法是你唯一还需要的一个概念。"</span>`
 },
 
-/* 8 — shrink: LoRA / QLoRA */
+/* 9 — shrink: LoRA / QLoRA */
 {
 body:`<div class="kicker"><span class="act">Act 2</span> · shrink the multiplier</div>
 <h2>Full → LoRA → QLoRA: drop the bytes/param</h2>
@@ -358,7 +401,7 @@ LoRA 的赌注:这个 <b>update 是低秩的</b> —— 能写成两个<b>瘦矩
 <span class="trans">→ 转场:"于是你有三个数 —— 12、2、0.6 byte/param。最后一步才是你真正想要的:哪个装得进你弄得到的卡?"</span>`
 },
 
-/* 9 — GPU table */
+/* 10 — GPU table */
 {
 body:`<div class="kicker"><span class="act">Act 2</span> · what card do YOU need</div>
 <h2>Map it to real GPUs</h2>
@@ -379,7 +422,7 @@ notes:`<b>"什么卡"的字面答案 —— 而且每一格都是<b>推出来的
 <span class="trans">→ 转场:"'我信这套算术'得有证据 —— 我刚才全是预测。真跑的时候,它对得上吗?"</span>`
 },
 
-/* 10 — proof */
+/* 11 — proof */
 {
 body:`<div class="kicker"><span class="act">Act 2</span> · the proof</div>
 <h2>Prediction vs reality</h2>
@@ -402,7 +445,7 @@ notes:`<b>诚实的收尾 —— 用唯一一个实测点验证整套算术。</
 <span class="trans">→ 进收尾。</span>`
 },
 
-/* 11 — CLOSE */
+/* 12 — CLOSE */
 {
 body:`<div class="center">
 <div class="kicker">Both walls are down</div>

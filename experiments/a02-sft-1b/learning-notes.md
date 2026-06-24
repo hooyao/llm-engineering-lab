@@ -54,6 +54,65 @@ already speaks English and knows Paris is the capital of France. Fine-tuning =
 > output better" is already familiar — fine-tuning is that same act, applied to a
 > model that already knows a lot.)
 
+### Seg 1 follow-up — where "already trained" comes from, and why SFT is "Supervised" (added later, from an A4-session question)
+
+The learner later asked, while reviewing the talk: "pretrain data — isn't it Q&A
+form? and is post-train data Q&A?" That exposed a gap A2 *assumed*: what pretraining
+actually is, and why the "S" in SFT means what it does. Recorded here because A2 leaned
+on "the model is already trained" without ever opening that box.
+
+**Pretrain data is NOT instruction→answer. It's raw, continuous text.** Scraped web
+pages, books, code, Wikipedia — long unstructured passages, no "question/answer"
+structure at all:
+```
+The capital of France is Paris. It sits on the Seine and has been the political
+center since the 12th century...
+
+def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    ...
+```
+The training objective is the SAME next-token prediction from Seg 4/5: cover the next
+token, let the model guess, penalize wrong guesses, nudge weights. There is no "question"
+and no "answer" — every token is simultaneously the answer to what came before and the
+question for what comes next. "Paris is the capital of France" got carved into the
+weights because that pattern appeared millions of times in the text, NOT because anyone
+taught it as a Q&A item. (This is the millions-of-GPU-hours step in Seg 1: almost the
+whole internet, next-token, no human labels.)
+
+**Where the "answer key" comes from is exactly what "supervised" means** — and it's the
+clean contrast the learner spotted ("instruction→answer is what makes it *supervised*,
+right?" — yes):
+
+| stage | supervision | what the "correct answer" is |
+|---|---|---|
+| **Pretrain** | **self-supervised** | the text's OWN next token — free, no human annotation |
+| **SFT** | **supervised** | a human- (or teacher-) written `answer` half the model aligns to |
+| Preference (RLHF/DPO) | a different supervision | not one gold answer, but chosen-vs-rejected pairs |
+
+- **self-supervised** (pretrain): the label is built into the data — the next word IS the
+  answer, so no person has to label anything. That's the "self."
+- **supervised** (SFT): each row's `answer` half is a correct answer someone wrote; the
+  model is graded against it (and only on that half — loss masking, Seg 5). That written
+  answer is the supervision signal. **That is the "S" in SFT = Supervised Fine-Tuning.**
+
+**Mechanism is the SAME next-token throughout** — pretrain and SFT are literally the same
+algorithm (predict next token → measure error → nudge weights). What changes between them
+is only (a) the **data shape** (unstructured text → instruction/answer pairs) and (b)
+**where the loss is computed** (all tokens → answer-half only). So "fine-tuning is the
+same process as pretraining, just less of it" is literal, not a metaphor.
+
+### Q&A folded in
+
+- **"Pretrain data — isn't it Q&A form?"** — No. Raw continuous text, no Q&A structure;
+  every token predicts the next. Q&A structure is introduced only at SFT.
+- **"Is post-train (SFT) data Q&A form?"** — Yes: `(instruction, answer)` pairs, with the
+  loss computed only on the answer half (loss masking, Seg 5).
+- **"instruction→answer is what makes it *supervised*?"** — Exactly. The human/teacher-
+  written answer is the supervision label. Pretrain has no such label (the next token is
+  its own label → self-supervised); that contrast is the source of the SFT name.
+
 ## Segment 2 — parameter is the umbrella term; weight & bias are kinds of it
 
 This is the segment that cleared up the central confusion. The relationship is
