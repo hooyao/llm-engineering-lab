@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 + A3 done (incl. full per-learner teaching).** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, 500 ex, peak 13.84 GB → corrected A1 to 12 B/param) **+ taught segment-by-segment in `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e, ~720 lines, with a learner diagnostic at the end — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` has the learner's OWN before/after observations + the SFT-definition / dataset trace. | **A4 — gradient accumulation** (`experiments/a04-grad-accum/`). Learner wants to READ the code before running it; A4 is also where A2's hidden training loop (`trainer.train()`) gets unrolled so forward/loss/backward/optimizer become visible (deferred from A2 by learner's choice). |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 + A3 + A4 done (incl. full per-learner teaching).** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, 500 ex, peak 13.84 GB → corrected A1 to 12 B/param) **+ taught segment-by-segment in `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e, ~720 lines, with a learner diagnostic at the end — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` has the learner's OWN before/after observations + the SFT-definition / dataset trace. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep on 3B. Learner read `loop_explained.py`, predicted the table, and caught the non-monotonic step_time himself. Taught in `experiments/a04-grad-accum/learning-notes.md` (Seg 0–5).** | **A5 — activation checkpointing + seq_len** (`experiments/a05-ckpt-seqlen/`). 3B + LoRA r=16, sweep seq_len × checkpointing on/off, 2D table of peak_mem/step_time. Note: A4 used bf16 m/v (8 B/param, Seg-6d footgun) — fine for the demo; mention fp32 states for real runs. |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1–D5 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` (default `ClassDefaultPolicy`: Read→Allow, else→Ask, +rule exceptions) + `IUserConfirmation` + `DefaultPermissionEngine`, gated in `RunOneToolAsync` before execute, fail-closed. Notes: `agent/experiments/d0{1..5}-*`. **Astra submodule at `e3b52a6`; 54 tests.** | D6 — context assembly (three-layer cache strategy) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. |
@@ -173,6 +173,70 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-24 — Track A Day 4 done (gradient accumulation; A2's hidden loop unrolled)
+
+A4 taught in tutor mode, learner-paced (the A2 method), then run on the GX10. The
+learner explicitly wanted to READ the code before any run, and A4 is where A2's
+`trainer.train()` four-beat loop finally gets unrolled into an explicit, line-by-line
+loop. Both honored.
+
+**Teaching arc (`experiments/a04-grad-accum/learning-notes.md`, Seg 0–5):** learner
+derived gradient accumulation himself ("keep one accumulator row, add onto it, divide at
+the end" = the mechanism, complete). Cleared a real confusion (gradient is per-sample AND
+per-parameter — I'd said "16 numbers" sloppily). Asked the precise math question (why does
+scaling the scalar `loss` divide every gradient — answer: gradient is linear in loss,
+const-multiple rule) and hit a product-rule slip (derivative of a constant is 0, not 1)
+that traced to his known weak spot #2 (value vs rate-of-change fused). Connected `loss /
+ACCUM` to A2 Seg-6d loss scaling (same linearity, opposite direction). PyTorch Q&A folded
+in: why `model(**batch)` returns a loss (the collator injects `labels` -> HF CausalLM
+self-scores), eager vs TF1 graph + async CUDA dispatch + `torch.compile`, and that reading
+loss in a debugger implicitly syncs (so it IS visible, but `.item()`/`print` in a hot loop
+is a stall).
+
+**Deliverables (`experiments/a04-grad-accum/`):** `loop_explained.py` (annotated skeleton,
+the file the learner read), `train.py` (runnable hand-written loop — no Trainer — with
+DataLoader, peak-mem/step-time measurement, mem-check diagnostic), `run.sh` (3-config
+sweep), `notes.md` (payoff + findings), `learning-notes.md`.
+
+**Payoff — the 3-config sweep (Llama-3.2-3B full SFT, BF16, seq 1024, 30 opt-steps),
+same effective batch 16:**
+```
+            peak_mem    step_time   final_loss
+micro=1     30.16 GB    4363 ms     1.3526
+micro=4     35.82 GB    3378 ms     1.2469   <- sweet spot
+micro=8     46.96 GB    3834 ms     1.2489   <- slower AND more memory
+loss spread (max-min): 0.1057
+```
+- Core claim verified: same effective batch -> same training (loss band 0.11 << step
+  spread 985 ms), independent of the micro/accum split. The Seg-2/3 math identity, on metal.
+- **The learner's best catch (from raw feel, "doesn't seem much faster"):** step_time is
+  NON-MONOTONIC. micro 1->4 is -23%, but micro 4->8 is **+13% (slower)** while costing
+  +11 GB. Past GPU saturation (micro=4 already fills the GEMM), micro=8 gains no compute
+  and goes memory-bandwidth-bound on the shared 273 GB/s LPDDR5x. Corrected rule:
+  micro-batch has an OPTIMUM ("just saturate the GPU"), not "bigger = faster."
+- Ground-truth findings: m/v dtype printed `torch.bfloat16` -> 8 B/param fixed (not A2's
+  12 — raw `torch.optim.AdamW` on bf16 params keeps bf16 states; the Seg-6d footgun, fine
+  for 30 steps). mem-check showed ~6 B/param resident between steps because
+  `zero_grad(set_to_none=True)` frees grad entirely (grad's 2 B is transient, only in peak)
+  — literal proof of "gradient is use-then-discard."
+
+**Data-integrity catch:** the first live (Monitor) read of micro=8 was POLLUTED
+(41.55GB/3194ms) by a brief GPU overlap during the sweep tail; the authoritative
+results.jsonl and an isolated idle-GPU re-run both gave 46.96GB/3834ms bit-for-bit.
+Trusting the polluted read would have reported "micro=8 fastest" — the opposite of truth.
+Lesson recorded: peak_mem/step_time only valid on an otherwise-idle GPU; verify surprises
+with an isolated re-run.
+
+**Infra correction:** the box's `git pull` WORKS now (the old "gh token invalid, scp only"
+note from the 2026-06-22 A2 entry is stale). The user pulled successfully this session; the
+only friction was untracked a02/a03/a04 dirs on a 28-commit-stale box HEAD colliding with
+what origin already had. Resolved by `git reset --hard origin/main` + `git clean` (after
+backing up the box-only `.log` run logs), restoring box to a clean mirror at `aab1eec`.
+A4 was still scp'd this session because it wasn't committed yet — once committed, the box
+can just `git pull` it.
+
+**Next:** A5 — activation checkpointing + seq_len sweep. Payoff co-designed on the day.
 
 ### 2026-06-23 — Track D Day 5 done (permission pipeline, Astra PR #6 merged) + resolved a parent-repo merge conflict
 
