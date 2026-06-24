@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1 + A2 + A3 + A4 done (incl. full per-learner teaching).** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, 500 ex, peak 13.84 GB → corrected A1 to 12 B/param) **+ taught segment-by-segment in `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e, ~720 lines, with a learner diagnostic at the end — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` has the learner's OWN before/after observations + the SFT-definition / dataset trace. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep on 3B. Learner read `loop_explained.py`, predicted the table, and caught the non-monotonic step_time himself. Taught in `experiments/a04-grad-accum/learning-notes.md` (Seg 0–5).** | **A5 — activation checkpointing + seq_len** (`experiments/a05-ckpt-seqlen/`). 3B + LoRA r=16, sweep seq_len × checkpointing on/off, 2D table of peak_mem/step_time. Note: A4 used bf16 m/v (8 B/param, Seg-6d footgun) — fine for the demo; mention fp32 states for real runs. |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 front-half taught (incl. full per-learner teaching).** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 FRONT HALF taught (LoRA mechanism + rank + alpha): `a06-lora-sweep/learning-notes.md` (Seg 0–3) — learner derived LoRA's bet AND its boundary unprompted.** | **A6 — finish the LoRA sweep** (the unfinished payoff: 4 configs r/α/target-modules, adapter sizes + gen quality). See `a06-lora-sweep/learning-notes.md` "What's LEFT" + the **2026-06-24 HANDOFF** log entry below. |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1–D5 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` (default `ClassDefaultPolicy`: Read→Allow, else→Ask, +rule exceptions) + `IUserConfirmation` + `DefaultPermissionEngine`, gated in `RunOneToolAsync` before execute, fail-closed. Notes: `agent/experiments/d0{1..5}-*`. **Astra submodule at `e3b52a6`; 54 tests.** | D6 — context assembly (three-layer cache strategy) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. |
@@ -173,6 +173,81 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-24 — A5 done + A6 front-half taught + HANDOFF for "continue A6" on a new machine
+
+> **New session, learner said "continue A6 / continue learning": read this whole block,
+> then `experiments/a06-lora-sweep/learning-notes.md` IN FULL (front half is taught,
+> payoff is not done), then the A2 learner diagnostic
+> (`experiments/a02-sft-1b/learning-notes.md` end). The learner switches machines and
+> expects the new session to pick up with full memory of today.**
+
+**A5 — activation checkpointing × seq_len (DONE, verified on GX10).** Tutor mode. The
+learner derived the entire time-for-space trade himself (Q1: backward needs each layer's
+forward input x, so activations stay resident; Q2: "time for space"; Q3: can't drop all,
+keep block-boundary checkpoints). Two prerequisites surfaced as real gaps and were taught:
+**seq_len** (learner had no prior contact — "my NN input was always one vector") and a
+**minimum transformer** (input = a `[seq_len, hidden]` 2-D matrix of token vectors, fed
+all at once because attention needs the whole sequence resident; a transformer layer =
+attention + MLP, and the MLP IS his old network). Deliberately did NOT rabbit-hole into
+attention — full build is Track B4.
+
+Payoff (8-config sweep, 3B + LoRA r=16, batch=2):
+```
+ seq_len |   ckpt OFF      |    ckpt ON      | mem saved | time cost
+     512 |  13.7G /  592ms |   8.2G /  796ms |   39.9%   |  +34.3%
+    1024 |  21.0G / 1354ms |  10.1G / 1826ms |   52.0%   |  +34.8%
+    2048 |  36.0G / 3063ms |  13.9G / 4085ms |   61.4%   |  +33.4%
+    4096 |  66.5G / 7273ms |  21.5G / 9634ms |   67.7%   |  +32.5%
+```
+Both learner predictions verified: **P2** save% rose monotonically 40→68% (his derived
+`save%=k/(F/(c·seq_len)+1)`); **P1** OFF rose only 4.87× over seq×8 (fixed part dilutes),
+and the two-point solve gives F≈6.4 GB = the frozen 3B base. The "aha" beyond the plan:
+at seq=4096 OFF needs 66.5 GB (OOM on a 24/40 GB card), ON needs 21.5 GB — checkpointing
+is the switch that makes an impossible config runnable. Files:
+`experiments/a05-ckpt-seqlen/{train.py,run.sh,notes.md,learning-notes.md}`. Results on box
+at `~/runs/a05-ckpt-seqlen/results.jsonl`.
+
+**A6 — FRONT HALF taught (LoRA mechanism + rank + alpha). Payoff NOT done.** The learner
+derived LoRA's bet (ΔW is low-information because the base already knows the world; tuning
+is re-expression) AND, unprompted, its boundary (reversing entrenched knowledge — "France's
+capital is London" — won't converge because that needs a high-rank ΔW; ties to talk slide
+4, made stricter by the low-rank constraint). Then: B/A are two skinny matrices **trained
+from scratch in a parallel branch** beside the frozen W (`output = W·x + (α/r)·B·A·x`),
+NOT a factoring of a pre-formed ΔW — the big ΔW never exists in memory, which is why LoRA
+saves it. Knob 1 = **rank r** (the waist; capacity vs overfit). Knob 2 = **alpha α** (a
+scale on the LoRA branch; feels like lr because both scale the correction — and α-vs-lr is
+largely redundant — but α/r is welded into the forward pass / survives to inference, while
+lr is training-only; the `/r` decouples branch-strength from rank). Full detail +
+**"What's LEFT for A6"** in `experiments/a06-lora-sweep/learning-notes.md`.
+
+**HOW TO RESUME A6 (do in order):**
+1. Read `experiments/a06-lora-sweep/learning-notes.md` IN FULL — front half is taught
+   (Seg 0–3). One open thread flagged there: the **α/r-vs-lr distinction wasn't explicitly
+   confirmed by the learner** (last thing before sleep) — re-check it landed, briefly.
+2. Read the A2 learner diagnostic (`experiments/a02-sft-1b/learning-notes.md`, end) — the
+   single most important file for teaching THIS learner: systems/precision instinct, asks
+   "why this design not that", derives from algebra/anchors; weak spots = umbrella-vs-kind
+   direction inversion + fusing nested scales; terminal can't render LaTeX subscripts
+   (write math as code); conversation 中文, ML terms in English, never translated.
+3. A6 sweep spec: `notes/curriculum-v2-execution.md` § A6 — 8B base, `tulu-3-sft-mixture`
+   ~5000 samples, 4 configs (r=8/α16/attn-only; r=16/α32/attn-only; r=16/α32/attn+mlp;
+   r=64/α128/attn+mlp). Per config: trainable params, **adapter checkpoint size on disk**,
+   final loss, qualitative gen on ~5 prompts. Teach **knob 3 = target modules** (attn-only
+   vs attn+mlp) during the sweep — not yet covered. Payoff form co-designed on the day.
+4. **Env for the new machine:** GX10 reachable as `ssh GX10` (works this session, no
+   password). **Box `git pull` WORKS now** (the old "gh token invalid, scp only" note is
+   stale — corrected 2026-06-24); box HEAD synced to origin. So on the box just
+   `cd ~/dgx-spark-playground && git pull`. Remote URL is now
+   `github.com/hooyao/llm-engineering-lab.git` (repo renamed; both laptop and box updated).
+   Container: `nvcr.io/nvidia/pytorch:26.04-py3`, deps `transformers datasets accelerate
+   peft` no-pin. Models on box: Llama-3.1-8B-Instruct, Qwen3-8B present;
+   `tulu-3-sft-mixture` may need downloading — check before the run.
+
+**Process notes this session:** Monitor's grep-over-ssh pipeline ended early twice and a
+background ssh waiter dropped (exit 255) — neither affected the sweep; reading the box log
+/ results.jsonl directly was reliable. For long box runs, prefer polling the result file
+over a streaming Monitor.
 
 ### 2026-06-24 — Track A Day 4 done (gradient accumulation; A2's hidden loop unrolled)
 
