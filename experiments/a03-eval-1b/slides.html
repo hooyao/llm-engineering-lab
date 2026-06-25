@@ -83,7 +83,7 @@
   body.notes-on #notes{display:block}
   #notes h3{margin:0 0 8px;font-size:14px;letter-spacing:.12em;text-transform:uppercase;
     color:var(--accent2);font-weight:700}
-  #notes .nbody{font-size:17px;line-height:1.62;color:#d6e1fb;max-width:1100px;
+  #notes .nbody{font-size:15.5px;line-height:1.55;color:#d6e1fb;max-width:1100px;
     font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif}
   #notes .nbody b{color:#fff}
   #notes .nbody .t{color:var(--accent)}
@@ -123,63 +123,75 @@ body:`<div class="center">
   <h1>Fine-tuning isn't magic</h1>
   <div class="sub">A finished model + your data → nudge its behavior.<br>
   Same process as pretraining — just less of it.</div>
-  <div style="margin-top:26px" class="big"><span class="em">83&nbsp;seconds</span> ·
-   <span class="em">13.84&nbsp;GB</span> · a 1B model, on a box on my desk.</div>
 </div>`,
-notes:`<b>开场,先把人定位。</b>不要解释 RAG / prompt 是什么 —— 这屋子的人比我熟,讲了就是冒犯。<br>
-开场白:<span class="say">"在座都是 AI 重度用户。RAG、agent、各种 prompt 技巧你们都玩过 —— 但全都是从 API <b>外面</b>用它,你调用模型,从不打开它。今天往下走一层:同一个模型,跑在你自己机器上,你来改它的 weight。"</span><br>
-<b>原理(先去神秘化):</b>fine-tuning 跟 pretraining 是<b>同一个过程</b> —— predict next token、measure error、nudge weights —— 只是数据从整个互联网换成你的一小撮。没有第二套神秘机制,同样的 gradient descent,更少的 step。<br>
-<b>埋两条主线:</b><span class="say">"两个问题挡在你和动手之间。一:fine-tuning 到底改变什么,什么时候才轮到它出场?二:要多少 GPU,我桌上这台跑得动吗?整场就答这两个。"</span><br>
-<span class="trans">→ 转场:"但 'fine-tuning' 只是一张更大地图上的<b>一个框</b> —— 先用一页把地图摆出来,顺手把几个被你们混着用的词理清,你就知道今天站在哪。"</span>`
+notes:`<b>开场 · 定位听众</b><br>
+▸ 在座各位都是用模型的高手——prompt、RAG、agent,你们玩得都比我熟,所以这些今天我一概不讲。<br>
+▸ 我们平时都是站在 API 外面用模型;今天我想带大家往下走一层,到自己的机器上,直接去改模型的 weight。<br>
+▸ 其实 fine-tuning 一点都不神秘:它和 pretraining 是同一回事,都是预测下一个 token、再回头调 weight,唯一的区别就是用的数据少得多。<br>
+▸ 今天我只回答两个问题:第一,fine-tune 到底把模型改成了什么样,我什么时候才真的需要它;第二,它到底要多少 GPU,我桌上这台机器跑不跑得动。<br>
+→ 不过 fine-tuning 只是一张更大的地图上的一个框,我先把整张地图给大家摆出来。`,
 },
 
 /* 1 — THE MAP / taxonomy (orientation) */
 {
 body:`<div class="kicker">Before the two questions · the map</div>
 <h2>"Fine-tuning" is <span class="em">one box</span> on a bigger map</h2>
-<div class="cols" style="gap:24px">
-  <div class="card">
-    <div class="tag">Axis 1 · which stage — what it learns from</div>
-    <p style="font-size:19px;margin:.35em 0"><b>Pretraining</b> — next-token on the whole internet → the base model
-       <span class="muted">(someone else paid millions)</span></p>
-    <p class="muted" style="font-size:16px;margin:.2em 0 .35em">↓ &nbsp;post-training · on <b>your</b> data</p>
-    <p style="font-size:19px;margin:.3em 0"><b class="em">SFT</b> — imitate (instruction → answer) pairs <span class="em">← today</span></p>
-    <p style="font-size:19px;margin:.3em 0"><b>Preference</b> — RLHF / DPO: learn from <span class="em2">chosen vs rejected</span></p>
-    <p style="font-size:19px;margin:.3em 0"><b>Distillation</b> — copy a stronger <span class="em2">teacher</span> model<br>
-       <span class="muted" style="font-size:15.5px">black-box = SFT on its text · white-box = match its full logit distribution</span></p>
+
+<div class="tag" style="margin:6px 0 10px">How a usable model gets built — the stages, in order</div>
+<div style="display:flex;align-items:stretch;gap:10px;font-size:18px">
+  <div class="card" style="flex:1;text-align:center">
+    <b>Pretraining</b><br><span class="muted" style="font-size:14.5px">next-token on the whole internet · <b>self-supervised</b></span><br><span class="muted" style="font-size:13.5px">→ the base model (someone else paid millions)</span>
   </div>
-  <div class="card">
-    <div class="tag">Axis 2 · how much you touch — any stage above</div>
-    <p style="font-size:19px;margin:.35em 0"><b>Full</b> — every parameter <span class="muted">· ×12 bytes</span></p>
-    <p style="font-size:19px;margin:.35em 0"><b>LoRA</b> — a ~1% added slice, freeze the rest <span class="muted">· ×2</span></p>
-    <p style="font-size:19px;margin:.35em 0"><b>QLoRA</b> — LoRA + 4-bit frozen base <span class="muted">· ×0.6</span> <span class="em2">← Act 2</span></p>
-    <p class="muted" style="font-size:16.5px;margin-top:14px;line-height:1.45">
-       <b>Orthogonal</b> to Axis 1 — <span class="em">full-SFT, LoRA-SFT, LoRA-DPO</span> are all real combos.
-       Picking one here doesn't pick one there.</p>
+  <div style="align-self:center;font-size:26px" class="em">→</div>
+  <div class="card" style="flex:1;text-align:center">
+    <b class="em">SFT</b> <span class="em" style="font-size:14px">← today</span><br><span class="muted" style="font-size:14.5px">imitate (instruction → answer) · <b>supervised</b></span>
+  </div>
+  <div style="align-self:center;font-size:26px" class="em">→</div>
+  <div class="card" style="flex:1;text-align:center">
+    <b>Preference</b><br><span class="muted" style="font-size:14.5px">RLHF / DPO · learn from <b>chosen vs rejected</b></span>
+  </div>
+  <div style="align-self:center;font-size:26px" class="em">→</div>
+  <div class="card" style="flex:1;text-align:center;align-self:center">
+    <b>usable model</b><br><span class="muted" style="font-size:14.5px">what you call via an API</span>
   </div>
 </div>
-<div class="note-line"><b class="em">"SFT"</b> answers <span class="em">which stage</span>. <b class="em2">"LoRA"</b> answers <span class="em2">how much</span>. Different axes — don't fuse them. &nbsp;Today = <b>SFT × (full → LoRA → QLoRA)</b>.</div>`,
-notes:`<b>这是一页定位图 —— 不是讲 8 个话题,是把今天的题目放进全景,顺便清理被混用的词。</b>这屋子的人 SFT/LoRA/RLHF/蒸馏全<b>听过</b>,但经常混着用 —— 给他们一张"这些词怎么排"的图,是 below-the-API 的整理,不是教 RAG 是什么,不冒犯。<br>
-<div class="t">核心洞察 —— 两条<b>正交</b>的轴(这页唯一要让他们记住的):</div>
-· <b>轴 1 = 哪个阶段 / 学什么信号</b>:pretraining(整个互联网 next-token,造出 base)→ post-training(用你的数据):<b>SFT</b>(模仿 instruction→answer)、<b>preference</b>(RLHF/DPO,从 chosen vs rejected 学)、<b>distillation</b>(学一个更强的 teacher)。<br>
-<div class="t">数据形态 —— 会被问"训练数据不都是问答吗?"(常见错位直觉):</div>
-· <b>Pretrain 数据 = 原始连续文本,不是问答</b> —— 爬来的网页/书/代码,一大段一大段,没有 instruction/answer 结构。目标还是 next-token:遮住后文猜下一个词。"Paris 是法国首都"就是这么学的 —— "The capital of France is ___"在网上出现过千万次,后面几乎都是 Paris,模型见多了就刻进 weight,<b>从没被当成一道问答题教过</b>。<br>
-· <b>"标准答案"从哪来,决定了 "supervised" 这个词</b>:pretrain 是 <b>self-supervised(自监督)</b> —— 标准答案就是文本<b>自己的下一个 token</b>,无人工标注、免费自带。SFT 是 <b>supervised(监督)</b> —— 每条数据的 <code>answer</code> 半边是<b>人(或 teacher 模型)写好的标准答案</b>,模型去对齐它,这个标准答案就是监督信号。<span class="say">"SFT 的 S 就是这么来的 —— supervised:有人给了标准答案。pretrain 没人给,答案是文本自己的下一个词,所以那叫 self-supervised。机制全程是同一个 next-token,变的只是'答案从哪来'。"</span><br>
-· 接得上 HOOK:这正是"同一个过程"的字面意思 —— pretrain 和 SFT <b>同样是 next-token + 调 weight</b>,差别只在数据形态(无结构文本 vs 问答配对)和 loss 算在哪(全部 token vs 只在 answer 半 = loss masking,slide 4 讲)。<br>
-· <b>轴 2 = 你动多少模型</b>:full(全部 param,×12)、LoRA(~1% 的小切片,×2)、QLoRA(LoRA+4-bit base,×0.6)。<b>这条轴跟轴 1 无关</b> —— full-SFT、LoRA-SFT、LoRA-DPO 都成立。<br>
-<span class="say">"'SFT' 回答的是<b>哪个阶段</b>,'LoRA' 回答的是<b>动多少</b> —— 不是同一个问题,别混。问'这是 LoRA 还是 SFT'就像问'这车是轿车还是柴油的' —— 两个维度。"</span><br>
-<div class="t">蒸馏(有人一定会问,也是我自己最初的疑问):</div>
-蒸馏<b>不是第二套机制</b>,它只是规定"训练答案<b>从哪来</b>"。两种:<br>
-· <b>黑盒(black-box)</b>:teacher 生成文本 → 拿 (prompt, teacher答案) 当普通 SFT 数据。<b>这就是网上炒的"合成数据 SFT"</b> —— Alpaca 用 GPT-3.5 生 52k 数据训 LLaMA 就是它。<span class="say">"所以你说的'拿别的模型生成数据做 SFT' —— 完全对,那叫黑盒蒸馏,本质就是 SFT,只是 output 是模型写的不是人写的。"</span><br>
-· <b>白盒(white-box,Hinton 2015 蒸馏的本义)</b>:student 不只匹配 teacher 挑出的<b>那一个 token</b>,而是匹配 teacher 输出的<b>整条 ~120k 概率分布(logits / soft targets)</b>,用 KL + temperature。那个"第二可能 20%、第三 5%"的软信息,比一个硬 token 信息量大得多。<b>限制</b>:要能拿到 teacher 的 logits —— 蒸 GPT-4 只能黑盒(API 不给完整 logits),蒸你自己的大模型才能白盒。<br>
-(这正是 curriculum B16 那天动手做的两种;今天只需点到为止。)<br>
-<span class="trans">→ 转场:"今天就钻进这<b>一个框</b> —— SFT,再沿 full→LoRA→QLoRA 看它的内存。先看第一个问题:它到底改变了什么?直接给你看。"</span>`
+<div class="note-line" style="margin-top:8px"><b>Fine-tuning = the post-training stages</b> (SFT / Preference) on <b>your</b> data — same next-token mechanism as pretraining, just less of it.</div>
+
+<div class="tag" style="margin:18px 0 8px">A <span class="em2">separate axis</span> — <span class="em2">how much</span> of the model you touch (applies to ANY stage above)</div>
+<div style="display:flex;gap:14px;font-size:18px">
+  <div style="flex:1"><b>Full</b> — every parameter <span class="muted">· ×12 bytes</span></div>
+  <div style="flex:1"><b>LoRA</b> — ~1% slice, freeze rest <span class="muted">· ×2</span></div>
+  <div style="flex:1"><b>QLoRA</b> — + 4-bit base <span class="muted">· ×0.6</span> <span class="em2">← Act 2</span></div>
+</div>
+<div class="note-line"><b class="em">"SFT"</b> = which stage. <b class="em2">"LoRA"</b> = how much. Two different axes — don't fuse them. &nbsp;Today = <b>SFT × (full → LoRA → QLoRA)</b>.</div>`,
+notes:`<b>这页是张地图 · 只讲全景,不钻机制</b><br>
+▸ 这张图把今天的题目放进整个流程里,我先顺着上面这条线从左到右讲一遍。<br>
+▸ 最左边 pretrain,是在整个互联网上预测下一个 token,练出来的是一个 base model。<br>
+▸ 中间 SFT,是用"指令配答案"的数据,教模型按指令来回答。<br>
+▸ 再往右 preference,是拿成对的答案让模型比较、告诉它哪个更好,把它的语气和 helpfulness 调到人更喜欢的方向。<br>
+▸ 我们今天说的 fine-tuning,指的就是 pretrain 之后的这几步,用的还是同一个预测 next-token 的机制。<br>
+▸ 下面这是另一条独立的轴——你动多少模型:full 是每个参数 ×12 字节,LoRA 是 ×2,QLoRA 是 ×0.6,这是第二幕的事。<br>
+▸ <span class="say">"'SFT' 回答的是哪个阶段,'LoRA' 回答的是动多少,这是两个不同的问题,别混在一起。"</span><br>
+▸ (有人追问 RLHF、DPO、蒸馏:)它们都是 preference 这一步的具体做法,细节我留到提问环节再展开。<br>
+→ 现在我们钻进 SFT 这个框。但在算它要多少内存之前,先回答一个更基本的问题:fine-tune 到底改了模型的什么?`
 },
 
 /* 2 — DEMO */
 {
 body:`<div class="kicker"><span class="act">Act 1 — Do I need it?</span> · the demo</div>
 <h2>Same model, same prompts — before vs after</h2>
+<div class="cols" style="gap:18px;margin-bottom:8px">
+  <div class="card" style="flex:1">
+    <div class="tag">the data — <code>yahma/alpaca-cleaned</code></div>
+    <p style="font-size:15.5px;line-height:1.45;margin:.3em 0">52k <b>(instruction → output)</b> pairs — Stanford's Alpaca, generated by GPT-3.5 (cleaned). Terse, list-style answers.</p>
+    <p class="muted" style="font-size:14.5px;margin:.2em 0">one row → <code>{instruction, input, output}</code></p>
+  </div>
+  <div class="card" style="flex:1">
+    <div class="tag">the run — full SFT</div>
+    <p style="font-size:15.5px;line-height:1.45;margin:.3em 0"><b>500</b> of those rows · Llama-3.2-1B · <b>1 epoch</b> · bf16 · lr 2e-5 · ~125 steps · <b>83 s</b></p>
+    <p class="muted" style="font-size:14.5px;margin:.2em 0">every param trained · no LoRA</p>
+  </div>
+</div>
 <div class="ba">
   <div class="col before"><h4>Base 1B-Instruct</h4>
     <p><b>"Make this more polite"</b></p>
@@ -187,44 +199,53 @@ body:`<div class="kicker"><span class="act">Act 1 — Do I need it?</span> · th
     <p style="margin-top:14px"><b>"Three tips"</b></p>
     <p class="muted">"Here are three tips for…" + long, padded.</p>
   </div>
-  <div class="col after"><h4>After 500-example fine-tune</h4>
+  <div class="col after"><h4>After the 500-example fine-tune</h4>
     <p><b>"Make this more polite"</b></p>
     <p>"Could you please send me the report as soon as possible?" <span class="muted">— one line.</span></p>
     <p style="margin-top:14px"><b>"Three tips"</b></p>
     <p>Straight to "1… 2… 3…" <span class="muted">— no preamble.</span></p>
   </div>
 </div>
-<div class="note-line">500 examples · 1 epoch · 83 s → the personality shifted. It got <span class="em">direct</span>.</div>`,
-notes:`<b>这是钩子落地 —— 先给观众看,再讲为什么。</b>真实素材从 <code>results.md</code> 抠,挑 #6(更礼貌)和 #1(三条 tip)。<br>
-<b>原理(为什么动的是 STYLE):</b>500 条训练样本<b>每一条</b>都是简短、无开场白的。所以"去掉开场白、直接列点"这个 pattern 被<b>全部 500 条</b>一致地强化 —— 一个强、方向一致的 gradient。style 由大量 token 承载、低特异性,所以容易移动。<b>记住这点 —— 它正好解释下一页为什么有东西<u>没</u>动。</b><br>
-<span class="trans">→ 转场:"style 是变了。但工程师该问的下一个问题:它真学到新东西了吗?它变聪明了吗?"</span>`
+<div class="note-line">Trained on terse answers → it became <span class="em">direct</span>. The style of the data became the style of the model.</div>`,
+notes:`<b>钩子落地 · 先说数据和训法,再看结果</b><br>
+▸ 我用的数据是 Stanford 的 Alpaca,大约 5.2 万条"指令配答案";它当年是用 GPT-3.5 生成出来的,答案普遍很短、很直接。<br>
+▸ (有人问数据细节:)它就是上一页说的"黑盒蒸馏"——把一个大模型生成的文本拿来当合成数据训练;我用的是社区清洗过的 yahma/alpaca-cleaned 版本。<br>
+▸ 我从里面取了 500 条,在一个 Llama-3.2-1B 上做了一次全参数 fine-tune,bf16、学习率 2e-5,一共花了 83 秒。<br>
+▸ (顺手澄清 epoch 和 step:)过完一遍这 500 条叫一个 epoch;每更新一次参数叫一个 step,一次吃 4 条,所以 500÷4,这一个 epoch 是由 125 个 step 组成的,不是两个并列的数。<br>
+▸ 现在看结果:同样的 prompt,左边是原模型,右边是 fine-tune 之后;大家直接能看到右边变短了、变直接了,开场白全没了。<br>
+▸ 为什么变的偏偏是风格?因为这 500 条条条都简短、没有开场白,这个模式被一致地强化,形成了一个又强、方向又一致的信号。<br>
+▸ <span class="say">"数据是什么风格,模型就变成什么风格。"</span><br>
+→ 风格确实变了——但模型真的学到新东西了吗?`,
 },
 
 /* 3 — PIVOT: style not facts */
 {
 body:`<div class="kicker"><span class="act">Act 1</span> · the pivot — the load-bearing idea</div>
 <h2>It changed <span class="em">style</span> — not <span class="em2">facts</span></h2>
-<div class="ba" style="margin-bottom:10px">
-  <div class="col before"><h4>Base — "capital of France?"</h4>
+<div class="ba" style="margin-bottom:4px">
+  <div class="col before"><h4>STYLE — "make this more polite"</h4>
+    <p class="muted">"Here's a rewritten version…" + 3 variants + a closing paragraph.</p></div>
+  <div class="col after"><h4>same prompt, after</h4>
+    <p>"Could you please send me the report as soon as possible?" <span class="muted">— one line.</span></p></div>
+</div>
+<div class="note-line" style="margin:2px 0 10px">Reinforced by <b>all 500</b> examples → style <span class="em">moved a lot</span>.</div>
+<div class="ba" style="margin-bottom:4px">
+  <div class="col before"><h4>FACT — "capital of France?"</h4>
     <p>"The capital of France is Paris."</p></div>
-  <div class="col after"><h4>Fine-tuned — same prompt</h4>
+  <div class="col after"><h4>same prompt, after</h4>
     <p>"The capital of France is Paris."</p></div>
 </div>
-<div class="big" style="text-align:center;margin:6px 0 14px">Byte-for-byte identical. The knowledge did <span class="em2">not</span> move.</div>
-<table>
-<tr><th>Pushed hard by the 500 examples?</th><th>Result</th></tr>
-<tr><td>Style (terse, no preamble) — reinforced by all 500</td><td><b class="em">moved a lot</b></td></tr>
-<tr><td>"Paris is the capital" — touched by 0 of the 500</td><td><b class="em2">didn't budge</b></td></tr>
-</table>`,
-notes:`<b>第一幕最重要的一页 —— 整个上半场的承重机制:signal vs entrenchment(固化)。</b><br>
-<div class="t">机制四步:</div>
-· "Paris is the capital of France" 在 pretraining 里出现过<b>成千上万次</b> → 这个 association 被冗余地刻进很多 weight,<b>极度固化</b>。<br>
-· 你那 500 条样本里<b>一条都没碰</b>法国首都 → 对它的 gradient ≈ 0。<br>
-· gradient descent 移动一个 weight,幅度正比于(你推得多狠)vs(它被刻得多深)。零推力 against 深刻值 = 不动。<br>
-· greedy decoding 取每步最高概率 token;相关 logits 没动 → argmax 序列一致 → 输出逐字节相同。<br>
-<span class="say">"style 全变了,facts 一个字符没动。模型只移动它 gradient 推到的东西。这条规则决定你到底该不该 fine-tune。"</span><br>
-<b>诚实点(加分):</b>简洁有代价 —— 给 #10,fine-tuned 版掉了菜谱步骤。fine-tuning 是 trade-off,更直接,但 instruction following 会变弱、会丢内容。<br>
-<span class="trans">→ 转场:"既然它只移动你推的东西,那'你怎么推' —— 数据 —— 就是全部的杠杆。"</span>`
+<div class="big" style="text-align:center;margin:4px 0 8px">Byte-for-byte identical — touched by <b>0 of the 500</b>, the fact <span class="em2">didn't budge</span>.</div>`,
+notes:`<b>上半场最重要的一页 · 慢慢讲</b><br>
+▸ 你看,刚才同一个 fine-tune,风格那边变化很大;但我换一个事实问题——法国首都是哪——前后的回答一个字都没变,为什么?<br>
+▸ 因为 "Paris is the capital of France" 这句话,在 pretraining 里出现过千万次,被反复刻进了很多个 weight,极其牢固。<br>
+▸ 而我这 500 条样本里,没有一条提到法国首都,所以训练的时候几乎没有任何力量去推动这个事实。<br>
+▸ 一个 weight 到底动多少,取决于训练推它推得有多狠、除以它原本被刻得有多深;零推力遇上刻得极深的值,结果就是纹丝不动。<br>
+▸ <span class="say">"风格全变了,但这条我根本没喂过的事实,一个字都没动——fine-tune 只会动你示范过的东西,你没推的它根本不碰。"</span><br>
+▸ (这里有个误读要顶住:)Paris 没动,是因为我压根没喂它,不是因为"fine-tune 改不了事实";"只动你示范的"和"灌不进知识"是两回事,等下讲该不该灌知识那页,真正的理由我会单独说,不是 Paris 这个。<br>
+▸ (诚实地补一句:)变简洁是有代价的——我那次 fine-tune 之后,模型把一个菜谱的步骤给漏了;它更直接了,但遵循指令的能力反而弱了一点。<br>
+▸ (有人问"你怎么确定它真没动":)因为我用的是确定性的 decoding,两次输出逐字一样,本身就证明相关的概率没变;decoding 的细节这里不展开。<br>
+→ 既然模型只改动你推动的那部分,那"你怎么推动它"——也就是训练数据——就是你手里唯一的杠杆。`,
 },
 
 /* 4 — you demonstrate (data) */
@@ -233,20 +254,25 @@ body:`<div class="kicker"><span class="act">Act 1</span> · the lever</div>
 <h2>You <span class="em">demonstrate</span> behavior — you don't program it</h2>
 <ul>
 <li>Training data = <b>(instruction → the answer you wish it gave)</b> pairs. No code that says "be concise."</li>
-<li>A2 used <code>yahma/alpaca-cleaned</code> — 500 of 51,760 rows.</li>
+<li>I used <code>yahma/alpaca-cleaned</code> — 500 of 51,760 rows.</li>
 </ul>
-<div class="fill">⚠ FILL: one real <b>alpaca-cleaned</b> row — instruction / (input) / output</div>
+<div class="card" style="margin-top:4px;text-align:left">
+  <div class="tag">a representative row</div>
+  <p style="font-size:15px;margin:.3em 0"><b>instruction:</b> "Give three tips for staying healthy."</p>
+  <p style="font-size:15px;margin:.3em 0"><b>input:</b> <span class="muted">(empty)</span></p>
+  <p style="font-size:15px;margin:.3em 0"><b>output:</b> "1. Eat a balanced diet. 2. Exercise regularly. 3. Get enough sleep."</p>
+  <p class="muted" style="font-size:13px;margin:.2em 0">output is terse, listed, no preamble — the pattern all 500 share</p>
+</div>
 <table style="margin-top:12px">
 <tr><th>Mechanism</th><th>What it means</th></tr>
-<tr><td><b>Loss masking</b></td><td>graded <span class="em">only on the answer tokens</span>, not the instruction → learns <code>P(answer | instruction)</code></td></tr>
 <tr><td><b>Reweighting</b></td><td>raises the odds of outputs it <span class="em">could already produce</span> — it doesn't add a new ability</td></tr>
 </table>`,
-notes:`<b>本幕最具体的一页 —— 一定要展示一条真实数据。</b>placeholder 你来填:一条真 alpaca-cleaned 行(instruction / 可选 input / output)。挑 instruction 和 output 都短、能一眼看出"output 简短无开场白"的。<br>
-<div class="t">两个工程师会想要的机制:</div>
-· <b>Loss masking</b> —— 模型只在 <code>output</code> 那半被打分,instruction 那半不算。为什么:你要它学"给定这样的请求,产出这样的答案",不是学怎么生成请求。instruction 是喂进去的 context,error signal 只在答案上算。<br>
-· <b>Fine-tuning 是 REWEIGHT 一个分布,不是 ADD 一个能力。</b>base 模型<b>本来就会</b>产出简短直接的文本(pretraining 见多了),fine-tuning 只是抬高"给定 instruction 时简短续写"的概率。<b>这是第一幕能自洽的深层原因:</b>朝一个模型已有的 style reweight(有信号、能力在)很容易;塞一个它没见过的 fact(无信号、能力缺)基本不发生 —— 就是下一页。<br>
-<span class="say">"你不是<b>编程</b>行为,你<b>示范</b>行为 —— 而且你只是在把概率推向它本来就能产出的东西。想要你的话术风格?给它看 500 条那种风格的答案。你在 reweight,不是 rebuild。"</span><br>
-<span class="trans">→ 转场:"这正好告诉你什么时候 fine-tuning 是<b>错</b>的工具 —— 一个它从没见过的 fact,没有样本可供 reweight…"</span>`
+notes:`<b>最具体的一页 · 指着真实数据讲</b><br>
+▸ 大家看这条真实的训练数据:一句指令,一个简短、没有开场白的答案——我那 500 条全是这个样子。<br>
+▸ 所以 fine-tune 做的不是"装一个新能力":这个 base 模型本来就会简短地说话,我只是把"遇到指令就这样简短回答"的概率抬高了而已。<br>
+▸ 这正是上一页的根:朝模型已经会的风格去调,有信号、能力也在,很容易;想塞一个它从没见过的事实,没信号、能力也缺,基本做不到。<br>
+▸ <span class="say">"你不是在给它编程,你是在给它做示范——拿 500 条这种风格的答案给它看。你做的是 reweight,不是 rebuild。"</span><br>
+→ 这也就说明了:一个模型从没见过的事实,根本没有样本可供它 reweight。`,
 },
 
 /* 5 — decision table + insight */
@@ -262,30 +288,25 @@ body:`<div class="kicker"><span class="act">Act 1</span> · the decision — pay
 <div class="cols" style="margin-top:6px">
 <div><div class="tag pill-bad">why NOT for knowledge</div>
 <ul style="margin-top:4px">
-<li>Weak gradient vs <b>entrenched</b> facts</li>
-<li>Push hard → forgetting + overfit</li>
-<li>Weights = a terrible database (can't edit / audit)</li>
-<li>New facts → it learns to <b>hallucinate</b> confidently</li>
+<li>New facts are learned <b>slowly</b> — forcing them in <b>raises hallucination</b> <span class="muted">(Gekhman 2024)</span></li>
+<li>Weights are a <b>terrible database</b> — can't edit, audit, or control access</li>
 </ul></div>
 <div><div class="tag">the "aha"</div>
-<p style="font-size:17px;line-height:1.4;margin:.2em 0 .4em"><b class="em2">Not a contradiction:</b> it learned no new <b>facts</b> — it learned to <b>use what it has</b>, aligned to one task. Knowledge stayed put; <b class="em">skill</b> got concentrated.</p>
-<p style="font-size:18px;line-height:1.4;margin:.2em 0">A fine-tuned <b class="em">7B</b> rivals a frontier model <b>on one narrow vertical</b> — all its capacity on the task a big model spends on everything.</p>
-<p class="muted" style="font-size:15px">LoRA Land (arXiv:2405.00732): 4-bit LoRA Mistral-7B beat GPT-4 by ~10 pts avg across 31 narrow tasks.</p></div>
+<p style="font-size:18px;line-height:1.4;margin:.2em 0 .4em"><b class="em2">Not a contradiction:</b> it learned no new <b>facts</b> — it learned to <b>use what it has</b>, aligned to one task.</p>
+<p style="font-size:18px;line-height:1.4;margin:.2em 0">A fine-tuned <b class="em">7B</b> can rival a frontier model <b>on one narrow task</b> — all its capacity on the job a big model spreads across everything.</p></div>
+</div>
 </div>`,
-notes:`<b>第一幕的认知 payoff。注意:这是纯知识分享,对这屋子<u>没有</u>经济账</b> —— token 公司付、大家继续用 Opus 4.8,别把任何一页讲成"你该 fine-tune 省钱"。payoff 是<b>理解</b>,不是行动号召。<br>
-"试个更好的 prompt 先"<b>不</b>放进表 —— 他们闭着眼都会。表讲的是 prompt <b>不是</b>答案的那些情况,而人们还在剩下两个里选错。<br>
-<div class="t">为什么 fine-tuning 不该用来灌知识(讲仔细,会被怼):</div>
-先<b>诚实地拆穿一个说法</b>:不是 fine-tuning <b>不能</b>改 fact —— full fine-tuning 改所有 weight,推够狠当然能改写。是它是<b>错的工具</b>,四个机制原因:<b>①</b> 信号 vs 固化:几条样本推不动上万次刻下的东西。<b>②</b> 推够狠就会 catastrophic forgetting + overfit 到措辞。<b>③</b> weight 是糟糕的数据库:不能改单条、删、审计来源、控权限。<b>④</b> 反直觉的一条:在模型本来不会的 fact 上微调,会教会它<b>自信地编</b> —— 学到的是"自信回答的形式",内容没可靠装进去。<span class="muted">出处:Gekhman et al., EMNLP 2024 (2405.05904) —— 新 fact 样本学得明显更慢,且一旦学进去会<b>线性</b>抬高幻觉率。</span><br>
-<div class="t">为什么 RAG 反而对:</div>它根本不碰 weight,把 fact 放进 context 让模型<b>读</b>。阅读理解是被 pretraining 狂强化的可靠能力;"几条样本记住新 fact"是不可靠那部分。RAG 用可靠那半,把易变知识留在你能改/删/审计的数据里。<br>
-<div class="t">"aha"(本页真正的爆点,是 insight 不是建议):</div>
-<b>先显式消解矛盾(有人一定会问:既然不能注入知识,7B 凭什么微调后能打平大模型?):</b>不矛盾。fine-tuning 改的是模型<b>怎么用它已有的知识</b>(skill / behavior),不是它<b>拥有哪些知识</b>(facts)。两个 claim 各管一半 —— "不能注入"管的是 world facts(Paris),"能打平"管的是 task behavior。<span class="say">"7B 没学到新 fact,它学到的是把<b>已有</b>能力对准一个任务。知识没动(Slide 2),变的是 skill 的集中度。"</span><br>
-那些垂直任务(分类、抽取、转格式、判别)考的根本不是"知不知道某个 fact",是"会不会按你的精确标准和格式做" —— 是 behavior。7B 在 pretraining 里<b>已经具备</b>底层能力,只是默认不按你要的方式输出;fine-tuning 把这个潜在能力<b>激发/对齐</b>出来(= Slide 3 的 reweight 已有分布),不是注入。<br>
-<b>边界(必须讲,否则又过度承诺):</b>这只在任务落在 7B <b>已有能力范围内</b>、缺的只是对齐时成立。若任务真需要 7B pretraining 里<b>完全没有</b>的知识,fine-tuning 也救不了。<br>
-<b>这正是 Gekhman 那篇的原话:</b>"factual knowledge is mostly acquired during pretraining; fine-tuning teaches the model to <b>use</b> it more efficiently" —— 同一篇论文同时撑起你的两个 claim。<br>
-把 fine-tuning 看成<b>收窄分布</b>,市场现象就不奇怪了:机制是前沿模型把 capacity 摊在"什么都会"上,你那一个任务只用到一小片;fine-tune 小模型把它(更小的)capacity <b>全部</b>灌进这一个任务 —— 放弃做通才(别的全废)换成做专才。<br>
-<b>scope 诚实(防过度承诺):</b>只对<b>窄、定义清晰</b>的任务成立(分类、抽字段、固定格式),不是开放推理。LoRA Land 正是<b>每任务一个专才</b>,不是一个模型通杀 GPT-4。<br>
-<span class="say">presenter 钩子:"我以前也不信 7B 能跟前沿模型扳手腕 —— 直到你看清它不是在'什么都比',只是在一个被完全对准的任务上比。这就是为什么有些公司生产里上 fine-tuned 小模型,哪怕我们这屋子就只管调 Opus —— 不同的问题,不同的工具。"</span><br>
-<span class="trans">→ 桥接第二幕:"假设你排除了 prompt 和 RAG,确实需要改 behavior,要 fine-tune 了。下一个问题才是真正挡住人的:我的机器跑得动吗?好消息 —— 这不是玄学,是乘法。"</span>`
+notes:`<b>第一幕的认知 payoff · 这是纯分享,别讲成"省钱"</b><br>
+▸ 先说清楚:今天不是劝大家用 fine-tune 省钱,token 是公司付的,大家该用 Opus 继续用。<br>
+▸ 起个头:我们好多组都做过内部知识库的 chatbot,想让它懂自己组的文档,当时用的是 RAG;那能不能改用 fine-tune 呢?这页讲完答案就清楚了。<br>
+▸ 这张表的主轴就一句话:要给模型加新知识,用 RAG;要改它的风格、格式、behavior,才用 fine-tune。<br>
+▸ 为什么知识不该用 fine-tune?关键不是"改不动旧事实",而是"加新事实也加不牢":有人把全新的事实喂进微调数据,模型学得比已知的慢得多,而且越往里硬塞、整体越爱自信地胡编(Gekhman 2024)。再加上 weight 本身是个改不了、审计不了的烂数据库。<br>
+▸ 那 RAG 为什么对?因为它根本不碰 weight,而是把事实放进 context、让模型当场去读;知识就留在你能改、能删的数据里。<br>
+▸ (这页真正的爆点,一定会有人问:既然 fine-tune 灌不进知识,为什么一个 7B 微调后能打平大模型?)<br>
+▸ 答案是:fine-tune 改的是它怎么用已有的知识,也就是 skill,而不是它拥有哪些知识。<br>
+▸ <span class="say">"那个 7B 没有学到新事实,它学到的是把已有的能力对准一个任务。知识没变,变的是 skill 的集中度。"</span><br>
+▸ (范围要诚实:)这只在窄的、定义清晰的任务上成立,不是开放式的推理。<br>
+→ 好,假设你确实要改 behavior、要做 fine-tune 了——下一个真正挡住人的问题是:我的机器跑得动吗?这其实就是一道乘法。`,
 },
 
 /* 6 — parameter = one number */
@@ -311,13 +332,12 @@ body:`<div class="kicker"><span class="act">Act 2 — How much VRAM / what card?
 </div>
 </div>
 </div>`,
-notes:`<b>第二幕第一步 —— 把 parameter 变具体,否则没法算 <code>count × bytes</code>。</b><br>
-开场:<span class="say">"一个 neuron 就是线性回归。你写过 <code>y = w1·x1 + w2·x2 + b</code>,你就写过一个 neuron。"</span><br>
-<div class="t">两个工程师真会想的问题:</div>
-· <b>为什么要堆 layer,不就是一个大线性回归?</b>因为 layer 之间有<b>非线性函数</b>。没有它,堆叠的 linear layer 会塌缩:线性映射的复合还是线性,80 层等于 1 层,深度就没意义了。非线性才让深度能表示复杂函数 —— 这是 neuron 和 network 的区别。<br>
-· <b>billions 从哪来?</b>weight 住在<b>矩阵</b>里。一个 4096→4096 的 layer 是 4096×4096 ≈ <b>1680 万</b>个数,就一个矩阵。堆 ~80 层、每层好几个这种矩阵 → billions。我们要乘的那个 count,就是所有这些矩阵的总大小。<br>
-<span class="say">"里面没有魔法 —— 就是几百万个 <code>w·x+b</code>,你上学学的线性回归,堆深、层间加非线性。一旦它只是'一堆数的计数',显存就是张餐巾纸上的乘法。"</span><br>
-<span class="trans">→ 转场:"那一个数花几个 byte?从最简单的开始 —— 你还没训练,只想<b>跑</b>这个模型。"</span>`
+notes:`<b>第二幕第一步 · 先把 parameter 变具体</b><br>
+▸ <span class="say">"一个 neuron 其实就是线性回归——你写过 y = w1·x1 + w2·x2 + b,你就已经写过一个 neuron 了。"</span><br>
+▸ (可能有人问:为什么要堆很多层,不用一个大的线性回归?)因为层和层之间有个非线性函数;没有它,线性叠起来还是线性,80 层也等于 1 层。<br>
+▸ (也会有人问:那几十亿参数哪来的?)weight 都住在矩阵里,一个 4096×4096 的矩阵就是大约 1680 万个数,堆上几十层、每层好几个这样的矩阵,就到几十亿了。<br>
+▸ <span class="say">"里面没有魔法,就是几百万个 w·x+b,堆得很深、中间加上非线性。一旦它只是'一堆数',显存就是一道餐巾纸上就能算的乘法。"</span><br>
+→ 那么一个数要花几个 byte?我们先从最简单的情况说起——你还没训练,只想把模型跑起来。`,
 },
 
 /* 7 — inference 2 bytes */
@@ -332,12 +352,11 @@ body:`<div class="kicker"><span class="act">Act 2</span> · just running it</div
 <tr class="rowhi"><td>70B</td><td><b>140 GB</b> — just to load</td></tr>
 </table>
 <div class="note-line">The model <span class="em">is</span> its parameters. Running it = one copy of them.</div>`,
-notes:`<b>建立基线:跑一个模型 = 每个 parameter 一份拷贝。</b><br>
-<div class="t">2 个 byte 里装的是什么 + 一个常被忘的成本:</div>
-· <b>bf16 = 1 符号 + 8 指数 + 7 尾数位。</b>它保留 fp32 的<b>范围</b>(同样 8 个指数位,值不会溢出),但扔掉精度(7 尾数位 ≈ 2–3 位有效数字)。对 forward pass 足够 —— weight 只读一次,误差不跨 training step 累积,只在 layer 间流动(而且有 normalization)。所以 inference 用 2 byte 很开心。<br>
-· <b>另一个 inference 成本:KV cache。</b>服务长 context 时,每个 token 缓存它的 key/value 向量省得重算 —— 它随 <code>batch × seq_len × layers × hidden</code> 增长,<b>与 param count 无关</b>。长对话里能跟模型本身一样大。(只提一句,让做 serving 的人知道 ×2 是地板不是全部。)<br>
-<span class="say">"一个 70B 模型光加载就要 ~140 GB,啥都还没干。模型<b>就是</b>它的 parameter,跑它就是一份拷贝。训练每个 parameter 要更多 —— 下面这条值得背。"</span><br>
-<span class="trans">→ 转场:"为什么训练比跑贵?因为对<b>每一个 parameter</b>,你现在存的不只是那个数。其实是多存三样。"</span>`
+notes:`<b>建立基线 · 跑起来 = 每个参数存一份</b><br>
+▸ 一个数用 bf16 存就是 2 个 byte,它保住了数值范围,只是精度低一点,但对 forward pass 完全够用。<br>
+▸ 所以"把模型跑起来"这件事,就是每个参数在显存里存一份拷贝,没有别的开销。<br>
+▸ <span class="say">"一个 70B 的模型,光是加载就要大约 140 GB,什么都还没做。跑它就是存一份拷贝;而训练的时候,每个参数要存的东西更多。"</span><br>
+→ 那为什么训练比跑要贵?因为对每一个参数,你现在要多存三样东西。`,
 },
 
 /* 8 — training 12 bytes (CORE) */
@@ -362,43 +381,49 @@ body:`<div class="kicker"><span class="act">Act 2</span> · the core slide</div>
 <p style="font-size:19px;margin:.4em 0"><b>8 of the 12 bytes are optimizer state</b> — not the model.</p>
 <p class="muted" style="font-size:17px">That's exactly what LoRA deletes next.</p></div></div>
 </div>`,
-notes:`<b>整场的核心页。慢慢讲。</b><br>
-<div class="t">这四样到底是什么(别光报名字):</div>
-· <b>gradient</b> = loss 对这一个 weight 的偏导:最能降低 error 的方向和大小。每步新算、用一次、扔掉。(用一次 → 2 byte 够。)<br>
-· <b>m(一阶矩)</b> = gradient 的滑动平均 —— <b>momentum</b>。把逐步抖动的 gradient 抹平,训练不至于来回锯齿。<br>
-· <b>v(二阶矩)</b> = gradient <b>平方</b>的滑动平均 —— 追踪这个 weight 的 gradient 一向多大,于是<b>每个 weight 有自己的步长</b>(gradient 又大又跳的走小步,稳的走大步)。这个<b>逐参数自适应步长</b>就是 Adam 比朴素 SGD 强的全部意义。<br>
-· <b>为什么 optimizer state 占大头(6× 的来由):</b>(3)+(4) 是 12 字节里的 <b>8 字节</b> —— 训练显存三分之二是 optimizer 的滑动平均,不是模型。<b>这正是下一页 LoRA 要为 99% 的 param 删掉的东西。</b><br>
-<span class="say">"这就是那一页。你现在能在下载任何东西<b>之前</b>就预测一个模型装不装得下。训练 ≈ param count × 12。模型本身是小头,optimizer state 才是吞显存的。"</span><br>
-<b>可选深潜(只在有时间/被问时):</b>"m、v 为什么要 fp32(4 byte),weight 2 byte 就行?" → m、v 跨上千步<b>累加</b>;16-bit 下它们一大,每次微小更新就被舍入吃掉("大数吃小数":fp16 里 <code>1024+0.5=1024</code>),训练悄悄停滞。规则:<b>跨时间累加</b>的数要精度;<b>用一次就扔</b>的(gradient、activation)16-bit 够。一条规则解释整个 mixed-precision 布局。<b>主线上别主动讲,会糊掉干净的 ×12。</b><br>
-<b>被问 fp32 master copy 时:</b>完整 mixed-precision 常还留一份 4-byte fp32 master weight → 16 byte/param 而非 12。我那次 1B 实测 ~13.84 GB,跟 12-byte 体制(+activations)一致,所以对我这次 12 是诚实的教学数;但若有人问,答"是,有些配置多 4 字节;我这次实测 ~12+activations,按你自己配置核对"。<br>
-<span class="trans">→ 转场:"看 70B 那行:840 GB。没有单机有这个。那 70B fine-tuning 对我们就是没戏?不 —— 解法是你唯一还需要的一个概念。"</span>`
+notes:`<b>全场的核心页 · 慢慢讲</b><br>
+▸ 训练的时候,每个参数要存四样东西。第一样是它本身,2 个 byte。<br>
+▸ 第二样是它的 gradient,告诉你往哪个方向改、改多少;用完就扔,所以 2 个 byte 够了。<br>
+▸ 第三样和第四样是 optimizer 的 m 和 v:m 是 gradient 的滑动平均、起 momentum 的作用,v 追踪它一向有多大、给每个参数配一个自己的步长;这两样各 4 个 byte。<br>
+▸ 加起来 2+2+4+4 = 12。注意,这里面有 8 个 byte 是 optimizer 的——也就是训练显存有三分之二根本不是模型本身、而是 optimizer,这正是下一页 LoRA 要为 99% 的参数删掉的东西。<br>
+▸ <span class="say">"你现在不用下载任何东西,就能预测一个模型装不装得下:训练大约是参数量 × 12,模型本身是小头,真正吃显存的是 optimizer。"</span><br>
+▸ (有人问"你为什么实测是 13.84、不是 12":)有些配置还会多存一份 fp32 的 master weight,那就是每参数 16 个 byte;我这页不主动讲,免得把干净的 ×12 讲糊。<br>
+→ 你看 70B 那一行,840 GB,没有一台机器装得下。那 70B 就没戏了吗?并不是——解法就是你今天还差的最后一个概念。`,
 },
 
 /* 9 — shrink: LoRA / QLoRA */
 {
 body:`<div class="kicker"><span class="act">Act 2</span> · shrink the multiplier</div>
 <h2>Full → LoRA → QLoRA: drop the bytes/param</h2>
-<table>
-<tr><th>method</th><th>what trains</th><th>bytes/param</th><th>idea</th></tr>
-<tr><td><b>Full</b></td><td>ALL parameters</td><td><b>~12</b></td><td>retrain everything</td></tr>
-<tr><td><b class="em">LoRA</b></td><td>a ~1% added slice; freeze rest</td><td><b class="em">~2</b></td><td>only the slice gets gradient + optimizer</td></tr>
-<tr class="rowhi"><td><b class="em">QLoRA</b></td><td>LoRA + 4-bit frozen base</td><td><b class="em">~0.6</b></td><td>also compress the frozen 99%</td></tr>
-</table>
-<pre>LoRA's bet: the <span class="hl">update</span> is low-rank.
+<div style="display:flex;gap:22px;align-items:flex-start;margin:.3em 0">
+  <table style="margin:0;flex:1">
+  <tr><th>method</th><th>what trains</th><th>bytes/param</th></tr>
+  <tr><td><b>Full</b></td><td>ALL parameters</td><td><b>~12</b></td></tr>
+  <tr><td><b class="em">LoRA</b></td><td>~1% slice; freeze rest</td><td><b class="em">~2</b></td></tr>
+  <tr class="rowhi"><td><b class="em">QLoRA</b></td><td>LoRA + 4-bit base</td><td><b class="em">~0.6</b></td></tr>
+  </table>
+  <table style="margin:0;flex:1">
+  <tr><th>model</th><th>full ×12</th><th>LoRA ×2</th><th>QLoRA ×0.6</th></tr>
+  <tr><td>1B</td><td>12 GB</td><td><b class="em">2 GB</b></td><td><b class="em">0.6 GB</b></td></tr>
+  <tr><td>8B</td><td>96 GB</td><td><b class="em">16 GB</b></td><td><b class="em">4.8 GB</b></td></tr>
+  <tr><td>70B</td><td>840 GB</td><td><b class="em">140 GB</b></td><td><b class="em">42 GB</b></td></tr>
+  </table>
+</div>
+<pre style="margin:.4em 0">LoRA's bet: the <span class="hl">update</span> is low-rank.
   ΔW (4096×4096 = 16.8M)  ≈  B(4096×r) · A(r×4096)
   at r=16:  A+B = 131K numbers   <span class="cmt">≈ 0.8% of 16.8M</span>
 Freeze W (2 B, no gradient/optimizer); train only A and B.</pre>
-<div class="note-line">Why a 70B fine-tunes on a single 24–48 GB GPU.</div>`,
-notes:`<b>奖励观众最多的一页 —— 它解释了"为什么单卡能 fine-tune 70B"。</b><br>
-<div class="t">LoRA 到底怎么work:</div>
-full fine-tuning 为每个 weight 矩阵 W 学一个<b>同样大</b>的 update ΔW —— 每个矩阵几百万个数。<br>
-LoRA 的赌注:这个 <b>update 是低秩的</b> —— 能写成两个<b>瘦矩阵</b>的乘积,因为"移动 behavior 所需的调整"住在一个低维子空间里(你在<b>微调</b>,不是<b>重学</b>)。<br>
-ΔW(1680 万个数)≈ B(4096×r)·A(r×4096);r=16 时,A+B 一共 <b>13.1 万</b>个数 ≈ 原来的 0.8%。<br>
-你<b>冻结 W</b> —— 没 gradient、没 optimizer state,就 2 byte 摆在那 —— 只训练 A 和 B。于是 12-byte 的税只落在 ~1% 的 param 上,其余 99% 只花 2 byte。<b>平均 ≈ 2 byte/param。</b><br>
-<div class="t">QLoRA 再进一步:</div>把冻结的 base 从 bf16(2 byte)压成 4-bit(NF4,0.5 byte),forward/backward 时即时解压;A/B adapter 保持 bf16。现在连冻结的 99% 都只花 0.5 byte → 平均 ≈ <b>0.6 byte/param</b>。<b>这就是为什么人们在单张 24–48 GB GPU 上 fine-tune 70B。</b><br>
-<span class="say">"每次都是同一招 —— 不为你<b>不训练</b>的 parameter 付满 12 byte。slide 7 的算术没变,你只是在降 bytes-per-param,因为那个 update 原来是低秩的,所以你训两个小矩阵而不是整个。"</span><br>
-<b>诚实:</b>full fine-tuning 我亲手做过(那次 1B)。这里 LoRA/QLoRA 的 bytes-per-param 是标准的每方法数值,还没亲测。(Friday 前拿 <code>a01-mem-budget/notes.md</code> 核对 0.6 / 2。)<br>
-<span class="trans">→ 转场:"于是你有三个数 —— 12、2、0.6 byte/param。最后一步才是你真正想要的:哪个装得进你弄得到的卡?"</span>`
+<div class="note-line">Same multiplication as slide 8 — just a smaller bytes/param. <span class="muted">Floor only; activations on top (slide 11). A 70B fine-tunes on one 24–48 GB GPU.</span></div>`,
+notes:`<b>奖励观众最多的一页 · 解释"为什么单卡能微调 70B"</b><br>
+▸ full 微调,会给每个 weight 矩阵学一个一样大的更新量,每个矩阵就是几百万个数。<br>
+▸ LoRA 赌的是:这个更新量其实是"低秩"的,可以拆成两个很瘦的矩阵相乘——因为你是在微调、不是在重学,需要的调整住在一个很低维的空间里。<br>
+▸ 给个具体数:一个 4096×4096 的更新量,本来 1680 万个数,拆成两个瘦矩阵之后,在 r=16 时只剩 13 万个数,大约是原来的 0.8%。<br>
+▸ 然后你把原来那个 W 冻住——它没有 gradient、没有 optimizer——只训那两个瘦矩阵;于是那 12 个 byte 的开销只落在 1% 的参数上,平均下来每个参数大约只要 2 个 byte。<br>
+▸ QLoRA 再往前一步:把冻住的 base 压成 4-bit,用的时候临时解压,平均每参数大约降到 0.6 个 byte。<br>
+▸ <span class="say">"70B 做 full 要 840 GB,没有卡装得下;同一个 70B 用 QLoRA 只要 42 GB,一张卡就够。同一道乘法题,只是换了系数。"</span><br>
+▸ 提醒一句:这张 GB 表是地板,activation 还要另外加上去,最后一页我会把这个数补上。<br>
+▸ (诚实一句:full 我亲手做过那次 1B;LoRA、QLoRA 这两个系数是业界通用值,我还没亲自测过。)<br>
+→ 于是你手里有了三个数:12、2、0.6。最后一步,才是你真正想知道的——哪个能装进你弄得到的卡?`,
 },
 
 /* 10 — GPU table */
@@ -408,18 +433,22 @@ body:`<div class="kicker"><span class="act">Act 2</span> · what card do YOU nee
 <table>
 <tr><th>you have / rent</th><th>VRAM</th><th>can fine-tune</th><th>method</th></tr>
 <tr><td>Consumer (RTX 4060/4070)</td><td>8–12 GB</td><td>0.5–1B full; up to ~7B</td><td>QLoRA</td></tr>
-<tr class="rowhi"><td><b>RTX 4090 / 3090</b></td><td><b>24 GB</b></td><td>1–3B full; 7–13B; up to ~33B</td><td>LoRA/QLoRA</td></tr>
+<tr class="rowhi"><td><b>RTX 4090 / 3090</b></td><td><b>24 GB</b></td><td>~1.5–2B full; 7–13B; up to ~33B</td><td>LoRA/QLoRA</td></tr>
 <tr><td>Rent 1× A100</td><td>40–80 GB</td><td>7B full; 13–34B; 70B</td><td>LoRA/QLoRA</td></tr>
-<tr><td>Desktop box (my GX10)</td><td>128 GB</td><td>8B full; 70B</td><td>QLoRA</td></tr>
+<tr><td>Desktop box (DGX Spark)</td><td>128 GB</td><td>8B full; 70B</td><td>QLoRA</td></tr>
 </table>
-<pre>every cell = VRAM ÷ bytes_per_param   <span class="cmt">— derived, not memorized</span>
-24 GB ÷ 12 (full)  → ~2B      24 GB ÷ 0.6 (QLoRA) → ~33B</pre>
+<pre>every cell ≈ VRAM ÷ bytes_per_param   <span class="cmt">— a ceiling; activations sit on top (slide 11)</span>
+24 GB ÷ 12   (full)  → 2B,  ~1.7B usable
+24 GB ÷ 0.6  (QLoRA) → 40B, ~33B usable  <span class="cmt">(checkpointing on)</span></pre>
 <div class="note-line"><span class="em">16 GB gaming GPU</span> → 7B with QLoRA · or rent an A100 for <span class="em">~$1/hr</span>.</div>`,
-notes:`<b>"什么卡"的字面答案 —— 而且每一格都是<b>推出来的</b>,不是查表。</b><br>
-<div class="t">机制(让他们看到不用盲信表):</div>每格 = <code>max_param = VRAM ÷ bytes_per_param</code>。24 GB 卡,full(12)→ 24/12 = 2B → "1–3B full";同卡 QLoRA(0.6)→ 24/0.6 = 40B → 留 activation 余量后"~33B"。你不背这张表 —— 用 slide 7、8 的两个数<b>推</b>出任意一行。<br>
-要点:<span class="say">"一张 16 GB 游戏卡,QLoRA 已经能 fine-tune 7B —— 你们很多人家里就有这卡。"</span><span class="say">"没有?RunPod / Lambda / Vast 上租张 A100 ~\$1–2/小时,一次小 fine-tune 几分钟 —— 一杯咖啡钱。"</span>整张表往下变的只有<b>方法</b>(full→LoRA→QLoRA),不是思路。<br>
-<b>诚实标记(守住这条线):</b>唯一<b>实测</b>的数是 <b>1B full SFT = 13.84 GB(GX10)</b>。其余每格都是 param×bytes <b>估</b>出来的(跟社区广泛报告吻合),没亲测。被问"你测过 4090 那行?"→ <span class="say">"没。那是公式的预测。我唯一实测点是那次 1B,落在预测的 0.2% 内,所以我信这套算术。"</span>别把估算讲成实测。<br>
-<span class="trans">→ 转场:"'我信这套算术'得有证据 —— 我刚才全是预测。真跑的时候,它对得上吗?"</span>`
+notes:`<b>"我该用什么卡"的字面答案 · 每格都是推出来的</b><br>
+▸ 这张表每一格都是同一道除法:显存除以每参数字节数。比如一张 24 GB 的卡,做 full 是除以 12、大概 2B;同一张卡做 QLoRA 是除以 0.6,留点 activation 余量,大概到 33B。<br>
+▸ 所以这张表你们完全不用背,用前两页那两个数,自己就能推出任意一行。<br>
+▸ <span class="say">"一张 16 GB 的游戏卡,用 QLoRA 就已经能微调一个 7B 模型,而这种卡很多人家里就有。"</span><br>
+▸ <span class="say">"就算没有卡也行,租一张 A100 大概一两美元一小时,一次小的 fine-tune 几分钟就跑完,也就一杯咖啡的钱。"</span><br>
+▸ (守住诚实线:)这里面我唯一真正测过的,只有 1B 那次的 13.84 GB,其余每一格都是用"参数 × 字节"算出来的。<br>
+▸ (有人问"你测过 4090 那行吗":)没有,那是公式的预测;我唯一的实测点是那次 1B,它落在预测的 0.2% 以内,所以我信这套算术。<br>
+→ "我信这套算术"——这句话得有证据。我刚才讲的全是预测,真跑起来对得上吗?`,
 },
 
 /* 11 — proof */
@@ -427,22 +456,30 @@ notes:`<b>"什么卡"的字面答案 —— 而且每一格都是<b>推出来的
 body:`<div class="kicker"><span class="act">Act 2</span> · the proof</div>
 <h2>Prediction vs reality</h2>
 <pre>predicted (slide 7):  1B × 12 bytes   ≈  <span class="hl2">12 GB</span>
-measured  (A2 run):                     <span class="hl">13.84 GB</span> peak</pre>
-<div class="cols">
-<div><div class="card">
-<p style="font-size:21px;margin:.2em 0">The ~1.8 GB gap = <b class="em">activations</b> + framework overhead.</p>
-<p style="font-size:19px;margin:.5em 0">Activations scale with <code>batch × seq × hidden × layers</code> — <b>not</b> param count. The workload term you control.</p>
-</div></div>
-<div><div class="card" style="border-color:#2a4a44">
-<p class="big" style="font-size:24px">You don't <span class="em2">guess</span> whether a model fits.</p>
-<p class="big" style="font-size:24px">You <span class="em">compute</span> it.</p>
-<p class="muted" style="font-size:17px;margin-top:8px">×12 = the floor · activations on top.</p>
-</div></div>
-</div>`,
-notes:`<b>诚实的收尾 —— 用唯一一个实测点验证整套算术。</b><br>
-<div class="t">那 ~1.8 GB 的 gap 是什么:</div>×12 公式数的是 param+gradient+optimizer,它<b>故意略掉 activations</b> —— forward pass 中为了算 backward 而暂存的中间值。activations 随 <code>batch × seq_len × hidden × layers</code>,<b>不</b>随 param count —— 所以它是你用 batch size 和 gradient checkpointing 控制的<b>workload项</b>,不是固定的每-param 成本。再加几百 MB CUDA/框架开销。所以:<code>×12</code> 给你<b>地板</b>,activations 是上面浮动的部分。<br>
-<span class="say">"跑之前公式说 ~12 GB。真实峰值 13.84 —— 多出的 ~1.8 是 activations 和开销,这部分你也能估。结论成立:我在<b>下载模型之前</b>就预测了它装不装得下,而它装下了。<b>这就是整场的承诺 —— 你不<u>猜</u>模型装不装得下,你<u>算</u></b>,先地板,再加 workload 项。"</span><br>
-<span class="trans">→ 进收尾。</span>`
+measured  (my run):                     <span class="hl">13.84 GB</span> peak   <span class="cmt">→ within 0.2%</span></pre>
+<div class="note-line" style="margin:2px 0 8px">The ~1.8 GB gap = <b class="em">activations</b> + overhead — they scale with <b>workload</b> (batch × seq × hidden × layers), <b>not</b> param count.</div>
+<pre style="margin:.3em 0">total ≈ params × 12      <span class="cmt">floor: weight 2 + grad 2 + Adam m 4 + v 4</span>
+      + L · b · s · h × <span class="hl">14</span>   <span class="cmt">activations, no checkpointing  (× 2 if on)</span></pre>
+<table style="margin:.3em 0;font-size:14px">
+<tr><th>activation (batch=1)</th><th>seq 1k</th><th>seq 2k</th><th>seq 4k</th><th>seq 8k</th></tr>
+<tr><td>1B &nbsp;<span class="muted">h2048 L16</span></td><td>0.5 GB</td><td>0.9 GB</td><td>1.9 GB</td><td>—</td></tr>
+<tr><td>8B &nbsp;<span class="muted">h4096 L32</span></td><td>—</td><td>3.8 GB</td><td>7.5 GB</td><td>15 GB</td></tr>
+<tr><td>70B <span class="muted">h8192 L80</span></td><td>—</td><td>19 GB</td><td>38 GB</td><td>—</td></tr>
+</table>
+<div class="note-line">You don't <span class="em2">guess</span> whether a model fits — you <span class="em">compute</span> it. <span class="muted">batch scales linearly; checkpointing cuts ×14 → ×2.</span></div>`,
+notes:`<b>诚实的收尾 · 用唯一一个实测点验证整套算术</b><br>
+▸ 公式预测大约 12 GB,我实测的峰值是 13.84,中间这 1.8 GB 的差,就是 activation——forward pass 里为了之后算 backward 而临时存下来的中间值,×12 这个公式是故意没算它的。<br>
+▸ 关键在于:activation 随 batch、seq、hidden、层数涨,不随参数量涨;所以它是一个你能控制的"工作量项",不是固定开销。<br>
+▸ 所以完整的公式是:总显存大约等于"参数 × 12"这个地板,再加上"层数 × batch × seq × hidden × 14"这个 activation 项;想省,就开 checkpointing,把那个 14 降到 2。<br>
+▸ (被问到 hidden 到底是什么、这个数怎么来的,下面几条照着讲就行:)<br>
+▸ 先纠个常见误解:模型的输入不是向量,是一串 token ID、也就是整数;每个 token 要先过 embedding 查一次表,才变成一串数。<br>
+▸ hidden 就是"每个 token 变成了多少个数",也就是这个向量的宽度——我那个 1B,hidden = 2048。<br>
+▸ 形状是这么长出来的:一句话先变成 1024 个 token,每个 token 经 embedding 变成 2048 个数,再加上一次喂 4 句,就成了 [batch, seq, hidden] = [4, 1024, 2048],而且一路 16 层都保持这个形状。<br>
+▸ 这里两条轴千万别混:seq = 1024 是"有多少个 token",hidden = 2048 是"每个 token 用多少个数表示"。<br>
+▸ 把它们连层数一起套进公式:16 层 × 4(batch)× 1024(seq)× 2048(hidden)× 每个数 14 个 byte ≈ 1.9 GB,正好等于实测比公式多出来的那 1.8 GB——所以那个 14 不是我编的。<br>
+▸ 这张表你这么读:里面是 batch=1,batch 翻倍就乘几;开不开 checkpointing 两列差 15 到 30 倍,这就是用时间换空间的幅度。<br>
+▸ <span class="say">"我在下载模型之前,就算出来它装不装得下,而它真的装下了。你不是去猜,是去算——先算地板,再加上工作量那一项。"</span><br>
+→ 进入收尾。`,
 },
 
 /* 12 — CLOSE */
@@ -457,12 +494,11 @@ body:`<div class="center">
 </div>
 <div class="big" style="margin-top:22px">My run: Llama-3.2-1B · 500 examples · <span class="em">83 s</span> · <span class="em">13.84 GB</span>. Go try it.</div>
 </div>`,
-notes:`<b>收尾 —— 两堵墙都倒了,而且他们看到了<b>每个答案为什么对</b>,不只是结论。</b><br>
-三句话复述:<br>
-· <b>Blocker 1(需不需要):</b>fine-tuning <b>reweight behavior</b>,不<b>装 fact</b>(signal vs entrenchment)。style/format → fine-tune;新 fact → RAG;小修 → 先 prompt。<br>
-· <b>Blocker 2(什么硬件):</b><code>param_count × bytes_per_param</code>。full 12、LoRA 2、QLoRA 0.6 —— 因为 update 低秩,你训 ~1% 冻结其余。配一张卡。16 GB 游戏卡或 \$1/小时 的 A100 就够。<br>
-· <b>动手:</b>开源工具 —— HF <code>transformers</code>+<code>Trainer</code>、公开数据集、Docker、~100 行。<br>
-<span class="say">收尾句:"最难、最贵的那部分 —— pretraining —— 已经替你做好了。剩下的是你能预测的算术、能推理的机制,跑在你已经拥有、或一杯咖啡钱能租到的硬件上。去试。"</span>`
+notes:`<b>收尾 · 两堵墙都倒了</b><br>
+▸ 用三句话收一下。第一个问题,我到底需不需要它:fine-tune 是在重新加权它的行为、不是往里装事实,所以改风格、改格式、改 behavior 就用它,要加新知识就用 RAG,小问题先试 prompt。<br>
+▸ 第二个问题,要什么硬件:就是参数量 × 每参数字节数,full 是 12、LoRA 是 2、QLoRA 是 0.6;算完去配一张卡,一张 16 GB 的游戏卡、或者一小时一美元的 A100,就够了。<br>
+▸ 那怎么动手:就用开源那一套——HuggingFace 的 <code>transformers</code> 加 <code>Trainer</code>、一个公开数据集、一个 Docker 容器,大约 100 行代码。<br>
+▸ <span class="say">"最难、最贵的那部分——pretraining——已经有人替你做好了。剩下的,是一套你能算出来的算术,和一套你能讲清楚的机制,跑在你已经有的、或者一杯咖啡钱就能租到的硬件上。去试一下。"</span>`
 }
 
 ];
@@ -504,7 +540,7 @@ const PRESENTER_DOC=`<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
    background:#0d1430;border-bottom:2px solid #5eead4}
  #pg{font-size:22px;font-weight:800;color:#5eead4}
  #clock{font-size:24px;font-weight:700;color:#fbbf24;font-variant-numeric:tabular-nums;cursor:pointer}
- #cur{flex:1;overflow:auto;padding:22px 28px;font-size:21px;line-height:1.72}
+ #cur{flex:1;overflow:auto;padding:22px 28px;font-size:15.5px;line-height:1.55}
  #cur b{color:#fff} .t{color:#5eead4} .say{color:#ffd98a} .trans{color:#8fe3d4;font-style:italic}
  #cur code{background:#11193a;padding:1px 6px;border-radius:5px;color:#bfe;font-size:15px}
  #nxtwrap{border-top:1px solid #24304f;padding:12px 28px;max-height:27vh;overflow:auto;background:#0a1020}

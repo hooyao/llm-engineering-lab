@@ -68,8 +68,8 @@ then "so go try it."
 **The arc, with the transition between every beat written out** (this is the talk):
 
 ```
-HOOK     "83 seconds, 13.84 GB, on a box on my desk." + "it's the same process as
-          pretraining, just less of it" → two questions stop everyone. Today = these two.
+HOOK     "fine-tuning is the same process as pretraining, just less of it" → two
+          questions stop everyone. Today = these two.
 
 MAP      "Fine-tuning is ONE box on a bigger map." Two orthogonal axes:           ~1.5 min
   1  Axis 1 = which STAGE (pretrain → SFT / preference / distillation);
@@ -126,7 +126,14 @@ question demands — they must never interrupt the arc:
 # HOOK
 
 **On slide:** *"微调没那么神秘 — 一台桌面设备 + 一个下午就能玩"*
-Under it: *"I fine-tuned a 1B model in 83 seconds on a box on my desk."*
+
+> **Hook line removed (2026-06-25, learner's call):** the old subtitle "I fine-tuned a 1B
+> model in 83 seconds on a box on my desk" / "83 seconds · 13.84 GB · a box on my desk"
+> was cut as self-congratulatory and content-free. The hook page now carries only the
+> title + the two-line subtitle (what fine-tuning is + "same process as pretraining, just
+> less of it"). The 13.84 GB measurement is NOT lost — it stays where it does real work, as
+> the proof point on slide 11 (predicted 12 vs measured 13.84). Do not reintroduce the
+> stat-drop on the title slide.
 
 A pretrained model (Llama, Qwen) already knows language and facts — someone spent
 millions of GPU-hours on that, and you didn't pay for it. **Fine-tuning takes that
@@ -193,6 +200,22 @@ Axis 2 — HOW MUCH you touch (applies to ANY stage above):
   is a category error — like "is this car a sedan or a diesel?" Two different questions.
 - **"SFT" answers *which stage*; "LoRA" answers *how much*.** Engineers conflate them
   because they hear both as "ways to train." Naming the two axes is the whole payoff.
+- **Preference / RLHF / DPO (presenter ammo — name the difference from SFT in one line,
+  do NOT expand; today's spine is SFT).** The essential difference: SFT gives **one gold
+  answer to imitate**; preference gives **two answers and only says which is better** — it
+  learns a *relative* preference, not imitation of a single answer. Used where there is no
+  single correct answer, only "this is more helpful/safer than that" (aligning tone,
+  helpfulness, harmlessness). Two implementations:
+  - **RLHF** (Reinforcement Learning from Human Feedback) = the classic 3-step pipeline:
+    SFT first → train a **reward model** on human chosen-vs-rejected labels (it learns to
+    *score* an answer) → use RL (PPO) to push the model to *maximize that reward*. Three
+    models, heavy pipeline.
+  - **DPO** (Direct Preference Optimization) = **skips the reward model and the RL**;
+    folds the preference straight into one classification-style loss trained on the
+    chosen-vs-rejected pairs in a single step. The 2024-on default — simpler, more stable,
+    quality close to RLHF. One-liner: "RLHF = train a scorer then RL against it; DPO =
+    drop the scorer, train directly on the pairs — that's why almost everyone uses DPO now."
+  - (This is curriculum A9 / B9–B11 hands-on; today only name it. Keep it off the main path.)
 - **Data shape + where "supervised" comes from (a question this audience WILL have —
   "isn't all training data Q&A?").** Pretrain data is NOT instruction→answer — it's
   **raw continuous text** (scraped web / books / code), trained on plain next-token
@@ -276,9 +299,12 @@ entrenchment):**
 · The 500 fine-tuning examples contain NOTHING about France's capital
    → the gradient pushing on that association is ~zero.
 · Gradient descent moves a weight in proportion to (how hard you push) vs (how
-   entrenched it already is). Zero push against a deeply-carved value = no movement.
-· greedy decoding picks the highest-probability token at each step. The relevant
-   logits didn't move → the argmax sequence is identical → output is identical to the BYTE.
+   entrenched it already is). Zero push against a deeply-carved value = no movement
+   → the relevant weights don't move, so the output stays byte-for-byte the same.
+· (Only if asked "how do you know it really didn't move?") The comparison uses
+   deterministic decoding, so two identical outputs are themselves the proof that the
+   relevant logits didn't change. Don't teach decoding on this slide — it dilutes the
+   three-step mechanism.
 ```
 Say: "Most important slide in the first half. Style changed completely; facts didn't
 budge — not one character. The model only moves what its gradient pushes on. 500 terse
@@ -582,6 +608,20 @@ parameters. Here's the mechanism that lets us."
 | **Full** | ALL parameters | **~12** | retrain everything (slide 8) |
 | **LoRA** | a tiny ~1% added slice; freeze the rest | **~2** | only the slice gets gradient + optimizer |
 | **QLoRA** | LoRA + 4-bit frozen base | **~0.6** | also compress the part you're not training |
+
+**Then the same GB table as slide 8, one row of multiplication per method** (this is the
+form the learner asked for — full was already `param × 12`; give LoRA/QLoRA the same
+ready-to-read GB numbers, not just the coefficient):
+
+```
+          full ×12    LoRA ×2    QLoRA ×0.6
+  1B       12 GB        2 GB       0.6 GB
+  8B       96 GB       16 GB       4.8 GB
+  70B      840 GB     140 GB        42 GB
+```
+Same multiplication as slide 8 — only bytes/param shrank. **Floor only; activations add on
+top (slide 11).** The headline line: "70B full = 840 GB, nothing holds that; the same 70B
+under QLoRA = 42 GB, one card. Same arithmetic, smaller coefficient."
 
 **原理 — how LoRA actually works (this is the slide that rewards the audience most):**
 ```

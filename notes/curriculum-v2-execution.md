@@ -159,8 +159,10 @@ Best way to feel this: prompt both the original and your trained model with the 
 **Deliverable:** `experiments/a03-eval-1b/results.md` with the 10 prompt pairs and
 your own 3-line observation per prompt.
 
-**Term:** *generation* vs *loss*, *temperature*, *top_p*, *chat template* — define
-the first time each `tokenizer.apply_chat_template(...)` is called.
+**Term:** *generation* vs *loss*, *chat template* — define
+the first time each `tokenizer.apply_chat_template(...)` is called. (*temperature*
+and *top_p* are touched here only as `generate` arguments; they get their own
+payoff and full treatment in **A9.5**.)
 
 ## A4 — Gradient accumulation and effective batch size
 
@@ -289,6 +291,50 @@ much DPO is allowed to move away from the reference).
 
 **Resource (20 min):** DPO paper §3 + §4 — https://arxiv.org/abs/2305.18290.
 Read the loss derivation in §4 carefully; this is the heart of it.
+
+## A9.5 — Decoding strategies (greedy / temperature / top-k / top-p / beam)
+
+**Why:** Up to here every model output was produced by *some* decoding strategy
+that was never examined — A2/A3 just called `model.generate(...)` and the A3 slide
+leaned on "deterministic decoding → identical output" as *evidence* without ever
+opening the box. Decoding is the step that turns the final-layer logits
+(`[vocab_size]`, e.g. 128256 for Llama-3.2-1B) into the next token. It is a small,
+self-contained concept that deserves its own payoff instead of a footnote on a
+fine-tuning slide. It is the inference-side twin of A10's KV cache: same per-step
+decode loop — A9.5 is "how you pick the next token," A10 is "what gets recomputed
+to pick it."
+
+**Do:**
+
+- `experiments/a09b-decoding/sweep.py`: one fixed prompt, one model
+  (`Llama-3.2-1B-Instruct`), two experiments in one script:
+  1. **Temperature sweep** — same prompt, `temperature ∈ {0.0, 0.3, 0.7, 1.0, 1.2}`
+     (0.0 = greedy), `do_sample=True` except at 0.0. Print each output. Watch it go
+     deterministic → fluent-but-varied → word-salad.
+  2. **Strategy grid** — same prompt, four decoders side by side: greedy,
+     top-k (k=50), top-p (p=0.9), beam (num_beams=4). Print all four.
+- Note in the script *why* greedy is deterministic (argmax over logits; softmax is
+  monotonic so `argmax(logits) == argmax(softmax(logits))` — no need to normalize).
+- Pin the shape once: `generate` consumes a logits vector of shape `[vocab_size]`
+  per step (`vocab_size = 128256` for this model); the strategy decides which index
+  becomes the emitted token, then it is appended and the loop runs again
+  (autoregressive decode).
+
+**Deliverable:** `experiments/a09b-decoding/results.md` — the temperature-sweep
+outputs and the 4-strategy grid, with a 2-3 line observation on what changed and
+which setting you'd serve for a factual assistant vs a brainstorming tool.
+
+**Term:** *logits*, *decoding* vs *sampling*, *greedy / argmax*, *temperature*,
+*top-k*, *top-p (nucleus)*, *beam search*, *autoregressive decode*.
+
+**Payoff (decided live, but the form is fixed here):** the learner runs `sweep.py`
+themselves and *sees* the same prompt produce a deterministic line at temp 0 and
+drift into incoherence at temp 1.2 — one parameter (temperature), a visible
+gradient of randomness —
+plus the four-strategy grid making greedy-vs-sampling concrete. This is the "single
+number that means something" reward: temperature, watched live, not read back from
+a log. Ties straight back to the A3 slide — *now* the learner knows exactly why
+"deterministic decoding → byte-identical output" was a valid proof there.
 
 ## A10 — Inference: vLLM serve and benchmark
 
