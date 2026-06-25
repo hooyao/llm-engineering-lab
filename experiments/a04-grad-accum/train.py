@@ -37,7 +37,7 @@ def main():
     ap.add_argument("--dataset", default="/models/yahma/alpaca-cleaned")
     ap.add_argument("--seq-len", type=int, default=1024, help="A4 spec: fixed 1024.")
     ap.add_argument("--lr", type=float, default=2e-5)
-    # --- the two knobs that ARE the lesson ---
+    # --- the two hyperparameters that ARE the lesson ---
     ap.add_argument("--micro-batch", type=int, required=True,
                     help="Samples the GPU holds at once (sets activation memory).")
     ap.add_argument("--accum-steps", type=int, required=True,

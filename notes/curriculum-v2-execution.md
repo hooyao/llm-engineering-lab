@@ -203,7 +203,7 @@ block*.
 ## A6 — LoRA properly: rank, alpha, target modules
 
 **Why:** Until now you've used my default `r=16 on q/k/v/o + gate/up/down`. Time to
-understand what each knob does.
+understand what each hyperparameter does.
 
 **Do:**
 
@@ -618,7 +618,7 @@ to read end to end. This day finally lands the long-pending "MoE extension."
 
 **Do:**
 
-- In `model/model_minimind.py`'s `MiniMindConfig`, the MoE knobs are:
+- In `model/model_minimind.py`'s `MiniMindConfig`, the MoE hyperparameters are:
   `use_moe=False` (toggle), `num_experts=4` (routed experts),
   `num_experts_per_tok=1` (top-k routing). Read the MoE FFN class: how the router
   scores experts, how top-1 is selected, how outputs are combined, and where the

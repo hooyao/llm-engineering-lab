@@ -14,7 +14,7 @@
 
 import torch
 
-# ---- the two knobs that are the whole lesson -------------------------------
+# ---- the two hyperparameters that are the whole lesson ---------------------
 MICRO_BATCH = 1      # samples the GPU holds at once  -> sets activation memory (A1)
 ACCUM_STEPS = 16     # how many micro-batches we sum before stepping the optimizer
 # effective batch = MICRO_BATCH * ACCUM_STEPS = 16, SAME for all three day-plan configs.

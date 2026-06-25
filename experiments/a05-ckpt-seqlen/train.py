@@ -64,7 +64,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
 
-    # ---------------- Activation checkpointing toggle (the A5 knob) ----------------
+    # ---------------- Activation checkpointing toggle (the A5 control) ----------------
     # gradient_checkpointing_enable() = save activations only at block boundaries,
     # recompute the rest during backward. use_reentrant=False is the modern impl.
     if args.checkpointing == "on":

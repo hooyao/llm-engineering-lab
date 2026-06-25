@@ -1,11 +1,13 @@
-# A6 — learning notes (LoRA: rank / alpha / target modules) — IN PROGRESS (front half taught)
+# A6 — learning notes (LoRA: rank / alpha / target modules) — THEORY DONE, sweep pending
 
-> Same per-learner format as A2/A4/A5. **STATUS: front half taught (the LoRA mechanism
-> + the two knobs rank & alpha). The hands-on sweep (4 configs, adapter sizes, gen
-> quality) is NOT done yet.** A new session continuing A6 should: read this file, then
-> read `notes/curriculum-v2-execution.md` § A6 for the sweep spec, and run the 4-config
-> sweep as the payoff. The learner already USED LoRA all through A5 (3B + LoRA r=16);
-> A6 opens it up.
+> Same per-learner format as A2/A4/A5. **STATUS (2026-06-25): all three hyperparameters
+> taught (rank, alpha, target modules) AND the full prediction table hand-derived offline.
+> The only thing LEFT is running the 4-config sweep on GX10 to fill the MEASURED column.**
+> GX10 was unreachable this session, so by the learner's call we finished 100% of the
+> theory offline first; the metal run is a separate machine + a later session (Task #3).
+> A new session continuing A6 should: read this file, then `predictions.md` (the table to
+> verify), then `notes/curriculum-v2-execution.md` § A6 for the sweep spec. The learner
+> already USED LoRA all through A5 (3B + LoRA r=16); A6 opened it up.
 >
 > Pacing rule for this learner (proven A2→A5): one small segment, let them clarify in
 > place, fold Q&A back, anchor in linear-regression / systems trade-offs, state
@@ -16,10 +18,10 @@
 
 ## What A6 teaches (one line)
 
-LoRA's two knobs — **rank `r`** (how much capacity the update has) and **alpha `α`**
+LoRA's two hyperparameters — **rank `r`** (how much capacity the update has) and **alpha `α`**
 (how strongly the update is applied) — plus **target modules** (which weight matrices
-get an adapter). Today covered the mechanism + r + α. The sweep (r=8/16/64, attn-only
-vs attn+mlp) is the unfinished payoff.
+get an adapter). All three now taught + the prediction table hand-derived. The sweep
+(r=8/16/64, attn-only vs attn+mlp) is the pending metal run (`predictions.md` Task #3).
 
 ---
 
@@ -82,7 +84,7 @@ correction can be.
 
 - **Learner confirmed** the parallel-branch picture (W·x + B·A·x, B/A trained from scratch).
 
-## Segment 2 — knob 1: rank `r`
+## Segment 2 — hyperparameter 1: rank `r`
 
 `r` = the "waist" of the two skinny matrices:
 ```
@@ -93,7 +95,7 @@ correction can be.
   more params, richer, approaches full fine-tune, can overfit small data.
 - The A6 sweep tries r=8/16/64 to see this trade (underfit ↔ overfit/diminishing return).
 
-## Segment 3 — knob 2: alpha `α`, and why it feels like learning rate
+## Segment 3 — hyperparameter 2: alpha `α`, and why it feels like learning rate
 
 LoRA actually uses `ΔW = (α/r)·B·A` — a scaling coefficient on the whole LoRA branch.
 
@@ -113,7 +115,7 @@ learner's "they feel alike" caught a real overlap.
 | changing it affects | how fast you converge | how much the LoRA correction ultimately weighs |
 | still there after training? | no (training-only) | YES — inference still computes `W·x+(α/r)·B·A·x` |
 
-So lr is a knob on the training PROCESS (gone after training); α/r is a knob on the model
+So lr is a hyperparameter acting on the training PROCESS (gone after training); α/r acts on the model
 STRUCTURE (welded into forward, active at inference).
 
 **Why a separate α/r instead of just lr:** the `/r` makes the branch's overall scale
@@ -121,9 +123,175 @@ INDEPENDENT of r — bump r 16→64 (B·A grows in magnitude) and the `/r` resca
 so you can tune r (capacity) and α (strength) relatively independently without re-searching
 lr each time you change rank. (LoRA paper's deliberate design.)
 
-- **Open for the new session — learner did NOT yet explicitly confirm** the α/r vs lr
-  distinction landed (it was the last thing before they went to sleep). Re-check it lands,
-  then proceed to the sweep.
+- **CONFIRMED (2026-06-25):** the α/r-vs-lr distinction landed. Learner: "learning rate
+  没有了，α/r 是 lora 的结构...参数，肯定还在啊" — got both the direction (lr gone, α/r
+  survives) AND the reason (α/r is structural / welded into the forward pass, lr is
+  training-only). ✓
+- **One refinement added (size vs strength — pre-empts weak spot #2, scale-fusion):** the
+  learner called α/r a "结构大小参数". "结构" is right (survives to inference); "大小" fuses
+  the two hyperparameters. Disambiguated: `r` = size/capacity (hyperparameter 1: rank),
+  `α` = strength/scale of the branch (hyperparameter 2: alpha, entering as α/r). Two
+  different hyperparameters. Load-bearing because **all 4 sweep configs have
+  α=2r → α/r=2 held CONSTANT**; the sweep pins strength and varies only capacity (r) +
+  target modules. Flagged this so the learner reads the sweep as isolating capacity, not
+  strength.
+
+---
+
+## Segment 4 — where r / α / α/r physically sit in the architecture (learner asked for a diagram)
+
+The learner could not picture the three hyperparameters on the actual data flow. The
+diagram that landed (one linear layer). **NOTE — fix to my original drawing:** I first drew
+the frozen block as a SQUARE `W d×d` without saying I was silently using q_proj/o_proj (the
+square special case) as the example — this confused the learner (a general W is NOT square).
+Corrected to the general `[d_out, d_in]` form below; see `teaching-notes.md` §1 for the
+square-is-a-special-case point in full.
+
+```
+  x ──┬───────────────► [ W  [d_out,d_in]  frozen ] ───────────► W·x ──┐
+(d_in)│                                                         (d_out) │
+      │                                                                 ▼
+      │   ┌ A [r,d_in] ┐   ┌ B [d_out,r] ┐   ┌ scalar ┐             ( + ) ──► output
+      └──►│   down     │──►│     up      │──►│ ×(α/r) │──────────────►       (d_out)
+          └────────────┘   └─────────────┘   └────────┘
+            A·x: [r]          B·A·x: [d_out]     [d_out]
+              ▲                                     ▲
+        r = bottleneck width             α/r = how hard the whole branch is added
+```
+
+The three quantities, located:
+- **`r`** = the dim of the squashed vector BETWEEN A and B (the "waist"). A: d→r, B: r→d.
+  It has a visible position on the diagram.
+- **`α/r`** = the scalar multiply box on the branch output, before the add. Also a visible
+  position.
+- **`α` itself has NO independent position.** This was the key fix: α is not a circuit
+  location — it's just one of the two numbers you divide to GET the α/r scalar
+  (`α/r = your α ÷ your r`). On the architecture you can only point at **r (the waist)** and
+  **α/r (the scalar box)**; α is an input to dialing α/r, not a place.
+- Tie-back: this is why the sweep sets α=2r everywhere → the scalar that actually enters
+  forward, α/r, is pinned to 2.
+
+## Segment 5 — W shape = [d_out, d_in], and x is the input activation (learner's "shape?" question)
+
+The learner asked why I'd drawn `W d×d` and what x's shape is. Two fixes:
+
+**My sloppiness corrected:** `W d×d` was lazy. W is generally **not square** — it's
+`[d_out, d_in]`. I used 4096×4096 because q/o happen to be square; that's a special case,
+not the rule.
+
+**x is the input activation** (the vector the previous layer emitted, fed into this linear
+layer). Shapes, pinned with one token first (batch/seq_len dropped):
+```
+x       = [d_in]          input activation vector
+W       = [d_out, d_in]   matrix
+y = W·x = [d_out]         output activation vector
+```
+Why W must be `[d_out, d_in]`: its job is to turn a d_in-vector into a d_out-vector, so
+columns = d_in (to multiply in), rows = d_out (to emit). The shape is forced by "how many
+in, how many out", not chosen. Dim accounting: `[d_out,d_in]·[d_in] → [d_out]` (the two
+d_in's cancel).
+
+Real Llama-3.1-8B shapes (d_model=4096, d_ff=14336) — and this is where the learner's own
+instinct "a transformer isn't a single matrix" pays off:
+```
+q_proj/o_proj  [4096,4096]    square  ← the special case I'd lazily drawn
+k_proj/v_proj  [1024,4096]    not square (GQA — narrower; deferred to B4)
+gate/up_proj   [14336,4096]   not square — MLP widens 4096→14336
+down_proj      [4096,14336]   not square — MLP narrows back
+```
+The learner spotted k/v are `1024` not `4096` and wrote the formula with `1024+4096`
+correctly — did NOT autopilot to `4096+4096`. (Strength: reads the actual numbers.)
+
+With batch+seq_len added back, **W is unchanged** (W is the layer's fixed parameter,
+independent of how many tokens flow):
+```
+x = [batch, seq_len, d_in]    W = [d_out, d_in]    y = [batch, seq_len, d_out]
+```
+W's size is `d_out×d_in` only — no batch/seq_len. (Contrast: activation size DOES carry
+batch×seq_len — that was the A5 sweep axis. The two scale on different things.)
+
+## Segment 6 — transformer = a STACK of linear layers; LoRA fits into each W (the learner's real question)
+
+The learner's question, verbatim concern: "a transformer isn't a single matrix — how does
+LoRA fit in?" Correct instinct. The direction fix: **a transformer CONTAINS many W's; a W
+does not contain a transformer.**
+
+Scale pinned with explicit counts (pre-empts weak-spot #2, scale-fusion):
+```
+1 model (8B)
+  └─ ~32 transformer layers stacked
+       each layer has 7 linear layers (each holds 1 W):
+         attn group (4): q_proj, k_proj, v_proj, o_proj
+         mlp  group (3): gate_proj, up_proj, down_proj   (mlp = the old net from A2)
+```
+"attn" and "mlp" are just **group names for these 7 matrices** — nothing more (what
+attention does → B4). LoRA doesn't understand the transformer; it just finds the W's and
+drops the Seg-4 branch beside the chosen ones.
+
+**A LoRA adapter = the (A,B) pair attached to one W.** One W → one adapter. So the number
+of adapters = how many W's you choose to attach to.
+
+**target modules = which W's get an adapter** — the **3rd hyperparameter**:
+```
+attn-only:  adapt only the 4 attn W's per layer  → 32×4 = 128 adapters; mlp stays frozen
+attn+mlp :  adapt all 7 W's per layer            → 32×7 = 224 adapters
+```
+Un-adapted W's stay frozen: used in forward, never updated.
+
+Three hyperparameters, one line each:
+```
+r              bottleneck width inside each adapter   → how big one adapter is
+α (→ α/r)      strength of each adapter's branch       → how hard one adapter is added
+target modules which W's get an adapter               → how many adapters
+```
+
+## Segment 7 — area vs perimeter: why LoRA makes the expensive mlp matrices affordable
+
+The crux the learner derived. For ONE W:
+```
+full fine-tune pays:  d_out × d_in           ← AREA (product of the two dims)
+LoRA pays:            r × (d_in + d_out)      ← PERIMETER (sum of the two dims) × r
+```
+
+The learner first guessed (from the full-FT view) that mlp's down_proj is "3× and then
+some" bigger than q_proj — **right for full FT**: area ratio `(14336×4096)/(4096×4096) =
+3.5`. But under LoRA the same comparison is only `294K/131K = 2.25`, because 14336 drops
+from a **multiplier** to an **addend**. That collapse is the whole point: full FT can't
+afford to touch mlp (area 14336×4096 = 58.7M per W); LoRA can (perimeter r×(14336+4096)).
+
+The learner then wrote the per-layer formula himself, including the narrow k/v:
+```
+attn-only per layer = (4096+4096 + 1024+4096 + 1024+4096 + 4096+4096) × r = 26,624 × r
+attn+mlp  per layer = 26,624×r + (14336+4096)×3×r                        = 81,920 × r
+```
+×32 layers (identical within a config):
+```
+attn-only whole model =   851,968 × r
+attn+mlp  whole model = 2,621,440 × r
+```
+
+The 4 configs and the resulting **certain** param counts (full table + adapter-size
+prediction in `predictions.md`):
+```
+① r8/attn      851,968×8     =   6.82M
+② r16/attn     851,968×16    =  13.63M
+③ r16/attn+mlp 2,621,440×16  =  41.94M
+④ r64/attn+mlp 2,621,440×64  = 167.77M
+
+①→② r×2  → ×2.00   (r is linear)
+②→③ +mlp → ×3.08   (perimeter, not the ×3.5 area)
+③→④ r×4  → ×4.00   (r linear again)
+```
+
+**The adapter-dtype bet (resolve on GX10, A2-style).** adapter MB = params × bytes/param.
+- Learner bet **fp32**: few hundred MB so no pressure to save, and "fp32 carries more info."
+- Tutor bet **bf16**: A/B are *weights* (same class as base W); base is bf16, so at
+  inference `(α/r)·B·A·x` adds onto a bf16 `W·x` and any fp32 precision is truncated on that
+  add — unusable. Real driver = dtype-alignment with base, not space. Likely bf16 default.
+- The learner's "space doesn't matter" reasoning is CORRECT; it just doesn't decide the
+  dtype (alignment does). Open because PEFT's default is version-dependent — must not be
+  quoted from memory; the measured file size on the box decides. Both predictions in
+  `predictions.md`, MEASURED column waits for Task #3.
 
 ---
 

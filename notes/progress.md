@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 front-half taught (incl. full per-learner teaching).** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 FRONT HALF taught (LoRA mechanism + rank + alpha): `a06-lora-sweep/learning-notes.md` (Seg 0–3) — learner derived LoRA's bet AND its boundary unprompted.** | **A6 — finish the LoRA sweep** (the unfinished payoff: 4 configs r/α/target-modules, adapter sizes + gen quality). See `a06-lora-sweep/learning-notes.md` "What's LEFT" + the **2026-06-24 HANDOFF** log entry below. |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), only the GX10 sweep pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10** (the only thing left: fill the MEASURED column in `predictions.md` — params vs predicted 6.82M/13.63M/41.94M/167.77M, adapter size to reverse-out fp32-vs-bf16, final loss, gen). See `predictions.md` + the **2026-06-25** log entry below. |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1–D5 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` (default `ClassDefaultPolicy`: Read→Allow, else→Ask, +rule exceptions) + `IUserConfirmation` + `DefaultPermissionEngine`, gated in `RunOneToolAsync` before execute, fail-closed. Notes: `agent/experiments/d0{1..5}-*`. **Astra submodule at `e3b52a6`; 54 tests.** | D6 — context assembly (three-layer cache strategy) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. |
@@ -173,6 +173,62 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-25 — A6 theory completed OFFLINE (all 3 hyperparameters + prediction table); GX10 sweep deferred; two new CLAUDE.md rules
+
+> GX10 was unreachable from this machine the whole session. The learner's call: **finish
+> 100% of A6 theory offline first, then run the sweep on a box that can reach GX10 in a
+> later session.** So this entry is pure teaching + two communication-rule changes; no metal
+> run. Continue A6 = just run the sweep (see below + `a06-lora-sweep/predictions.md`).
+
+**A6 theory — now complete (was "front half" before).** Last session left rank+alpha taught
+but target modules untaught and no sweep. This session closed the rest, all offline:
+- **Confirmed the α/r-vs-lr distinction landed** (learner: "lr 没了，α/r 是结构参数还在") —
+  got direction + reason. Refined size-vs-strength: `r`=capacity, `α/r`=branch strength, two
+  separate hyperparameters; flagged all 4 configs hold α/r=2 so the sweep isolates capacity.
+- **Taught the architecture the learner was missing** (this was the real gap): `W` shape =
+  `[d_out, d_in]` and WHY (forced by in/out dims); `x` = input activation, shapes pinned per
+  token vs per batch; a transformer = **stack of linear layers** (32 layers × 7 W each: attn
+  q/k/v/o + mlp gate/up/down), real Llama-3.1-8B numbers (d=4096, d_ff=14336, k/v narrowed by
+  GQA). Learner's own instinct "a transformer isn't a single matrix" was correct and drove it.
+- **target modules = 3rd hyperparameter** (which W's get an adapter: attn-only=128 adapters,
+  attn+mlp=224). **area-vs-perimeter**: full FT pays `d_out×d_in`, LoRA pays `r×(d_in+d_out)`
+  — 14336 drops from multiplier to addend, which is why LoRA makes mlp affordable.
+- **Learner hand-derived the per-layer param formula** (`attn-only=26624×r`, `attn+mlp=81920×r`),
+  including the narrow k/v (`1024+4096`, not autopilot `4096+4096`). ×32 layers → 4-config
+  prediction table: ① 6.82M ② 13.63M ③ 41.94M ④ 167.77M (CERTAIN — pure arithmetic).
+- **The adapter-dtype bet (resolve on GX10, A2-style):** learner bet fp32 ("space doesn't
+  matter, fp32 carries more info" — the space half is right), tutor bet bf16 (A/B are weights,
+  base is bf16, fp32 precision truncates on the `(α/r)·B·A·x + W·x` add; real driver = dtype
+  alignment). Open — PEFT default is version-dependent, NOT quoted from memory; measured file
+  size decides. Both predictions tabled.
+
+**Files (`experiments/a06-lora-sweep/`):** `learning-notes.md` (dialogue record, now Seg 0–7;
+the original confusing square `d×d` diagram fixed to general `[d_out,d_in]`), `teaching-notes.md`
+(NEW — clean de-dialogued review reference, 7 sections + one-screen summary), `predictions.md`
+(NEW — the params+adapter prediction table with MEASURED column waiting for the box).
+
+**Two CLAUDE.md rule changes (both learner-requested):**
+1. **"Tensor Shapes — Always Spell Them Out"** (new section after Math Rendering). The learner
+   stated shape-tracking is their #1 active difficulty (numeric form of weak spot #2,
+   scale-fusion). 6 mandatory rules whenever a dimension appears: name every dim + say what it
+   is; attach the real number; declare special cases (the `d×d`/square slip); show input→output
+   transform + which dim cancels; pin the scale level with a count; worked example before
+   general formula. Standing instruction for all tracks.
+2. **Register rule** (under Communication Conventions): precise + concise, NOT colloquial. Bans
+   casual analogies / folksy stand-in words (`knob`, "旋钮", "腰") in English AND Chinese —
+   extends directive 1 to offhand metaphors; minimize colloquialism even in Chinese prose (the
+   learner finds it *harder*, not easier); but don't overcorrect into jargon-stacking. Acted on
+   it: purged `knob`/旋钮 repo-wide (7 occurrences → hyperparameter/factor/control), keeping only
+   the rule's own reference.
+
+**Next:** A6 — run the 4-config sweep on a GX10-reachable box. 8B base (Llama-3.1-8B-Instruct or
+Qwen3-8B present), `tulu-3-sft-mixture` ~5000 samples (confirm on box, may need download). Fill
+`predictions.md` MEASURED column: trainable params vs predicted, `ls -l adapter_model.safetensors
+÷ params` → fp32 (≈4) or bf16 (≈2), final loss, qualitative gen on ~5 prompts. Payoff = learner
+reads the prediction-vs-measured table himself (A2/A5 form). Env: `ssh GX10`, container
+`nvcr.io/nvidia/pytorch:26.04-py3`, deps `transformers datasets accelerate peft` no-pin, box
+`git pull` works.
 
 ### 2026-06-24 — A5 done + A6 front-half taught + HANDOFF for "continue A6" on a new machine
 
@@ -233,7 +289,7 @@ lr is training-only; the `/r` decouples branch-strength from rank). Full detail 
 3. A6 sweep spec: `notes/curriculum-v2-execution.md` § A6 — 8B base, `tulu-3-sft-mixture`
    ~5000 samples, 4 configs (r=8/α16/attn-only; r=16/α32/attn-only; r=16/α32/attn+mlp;
    r=64/α128/attn+mlp). Per config: trainable params, **adapter checkpoint size on disk**,
-   final loss, qualitative gen on ~5 prompts. Teach **knob 3 = target modules** (attn-only
+   final loss, qualitative gen on ~5 prompts. Teach **hyperparameter 3 = target modules** (attn-only
    vs attn+mlp) during the sweep — not yet covered. Payoff form co-designed on the day.
 4. **Env for the new machine:** GX10 reachable as `ssh GX10` (works this session, no
    password). **Box `git pull` WORKS now** (the old "gh token invalid, scp only" note is

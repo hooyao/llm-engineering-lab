@@ -26,7 +26,7 @@ GB = 1024**3  # bytes per GiB (binary); curriculum.md figures are ~this scale
 
 # --------------------------------------------------------------------------- #
 # dtype sizes — bytes to store ONE number at a given precision.               #
-# This is the per-number cost knob; everything downstream multiplies by it.   #
+# This is the per-number cost factor; everything downstream multiplies by it. #
 # --------------------------------------------------------------------------- #
 DTYPE_BYTES: dict[str, float] = {
     "fp32": 4.0,

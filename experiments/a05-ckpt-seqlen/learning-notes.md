@@ -89,8 +89,8 @@ fit. Filled:
 - Orthogonal to batch: batch = how many samples (rows); seq_len = how long each sample
   (columns). One forward processes a `batch x seq_len` block of tokens.
 - It's the `--seq-len 1024` in the A2/A4 scripts (every sample truncated/padded to that).
-- Activation `∝ batch * seq_len * hidden * layers` — seq_len is a clean linear knob on
-  activation memory, which is why A5 sweeps it.
+- Activation `∝ batch * seq_len * hidden * layers` — seq_len scales activation memory
+  linearly, which is why A5 sweeps it.
 - Real-world anchor: the "context window" (128k) when using Claude/GPT IS the seq_len
   ceiling; long context is expensive because activation (training) and KV cache
   (inference) both grow with seq_len.

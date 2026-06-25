@@ -174,7 +174,7 @@ and that still excludes activations (the intermediate `h` values from ยง3; see ย
 > mixed-precision** uses. So: 12 = HF-`Trainer` default, 16 = DeepSpeed/FSDP upper
 > bound. See `../a02-sft-1b/notes.md` for the full reconciliation.
 
-### dtype is the per-number cost knob
+### dtype is the per-number cost factor
 
 | dtype | bytes/number | used for |
 |---|---|---|
