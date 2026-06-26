@@ -605,11 +605,6 @@ document.addEventListener('keydown',e=>{
     else document.exitFullscreen();
   }
 });
-// click right half = next, left = prev
-stage.addEventListener('click',e=>{
-  const x=e.clientX/window.innerWidth;
-  go(x>0.5?i+1:i-1);
-});
 window.addEventListener('beforeunload',()=>{ if(presenterWin&&!presenterWin.closed)presenterWin.close(); });
 render();
 </script>
