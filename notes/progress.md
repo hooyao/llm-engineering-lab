@@ -148,9 +148,9 @@ writing Astra code so you don't re-do or contradict prior work there.
 
 When the user is ready to continue, the natural next steps are:
 
-1. **Track A A6/A7 continuation**: GX10 is currently unreachable from this machine. When a
-   GX10-reachable machine is available, run the A6 4-config LoRA sweep first, then implement
-   and run A7 QLoRA 8B using `experiments/a07-qlora-8b/theory-notes.md`.
+1. **GX10 task queue**: GX10 is currently unreachable from this machine. When a GX10-reachable
+   machine is available, use `notes/gx10-task-list.md` as the central run queue. P0 is A6
+   LoRA sweep, then A7 QLoRA 8B.
 2. The `experiments/smoke-test/` script has been verified to run end-to-end (5 steps
    of LoRA-3B succeeded). The user has NOT yet executed the full 200-step run.
    If they ask "did we finish the smoke test?" the answer is "the pipeline is
@@ -173,6 +173,14 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-29 — Added centralized GX10 task list
+
+Created `notes/gx10-task-list.md` as the single run queue for tasks that require the GX10.
+It consolidates the scattered pending items from `progress.md`, A6/A7 notes, and
+`hardware-gx10.md`: P0 A6 LoRA sweep + A7 QLoRA 8B, P1 PyTorch CPU/CUDA copy-bandwidth
+benchmark on GB10 unified memory, P2 A8 scale + A10 serving, and P3 Track B runs that
+benefit from GX10. Updated Open threads to point future sessions at this file.
 
 ### 2026-06-29 — A7 QLoRA theory notes + PyTorch/UMA hardware notes
 
