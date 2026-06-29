@@ -260,3 +260,110 @@ LoRA bolts an (A,B) branch beside chosen W's:  output = W·x + (α/r)·B·A·x
   targets = which W's get a branch       (how many adapters: attn-only=128, attn+mlp=224)
 cost per W:  full = d_out×d_in (area)  |  LoRA = r×(d_in+d_out) (perimeter)
 ```
+
+---
+
+## Review card — `r`, `alpha`, `attn-only`, `attn+mlp`
+
+Use this when coming back to A6 cold. The sweep is not changing all LoRA knobs at once;
+it pins branch strength and varies capacity plus coverage.
+
+One adapted linear layer computes:
+
+```text
+output = W*x + (alpha/r) * B * A * x
+
+W: [d_out, d_in]      frozen base weight
+A: [r, d_in]          trainable LoRA down projection
+B: [d_out, r]         trainable LoRA up projection
+```
+
+### `r` = capacity / adapter size
+
+`r` is the rank of the LoRA update and the middle dimension between `A` and `B`.
+For one adapted weight matrix:
+
+```text
+LoRA params = r * (d_in + d_out)
+```
+
+So doubling `r` doubles trainable params and adapter checkpoint size. Bigger `r` gives the
+adapter more capacity; on a small SFT dataset it can also hit diminishing returns or overfit.
+
+### `alpha` = branch strength, via `alpha/r`
+
+A bare `alpha` is not a separate box in the model. The scalar that enters forward is:
+
+```text
+scaling = alpha / r
+```
+
+Learning rate and `alpha/r` both scale effects, but they live in different places:
+
+```text
+learning rate: optimizer/training-process parameter; gone after training
+alpha/r: forward-pass model parameter; still active at inference
+```
+
+In the A6 sweep, every config sets `alpha = 2r`, so `alpha/r = 2` is constant. That means
+A6 is not testing branch strength; it is testing rank capacity and target-module coverage.
+
+### `attn-only` = adapt 4 attention projections per layer
+
+```text
+q_proj, k_proj, v_proj, o_proj
+```
+
+For Llama-3.1-8B, per layer:
+
+```text
+q_proj [4096,4096]
+k_proj [1024,4096]
+v_proj [1024,4096]
+o_proj [4096,4096]
+
+attn-only per layer = 26,624 * r
+whole model          = 851,968 * r       # 32 layers
+```
+
+This gives 128 adapters total: `32 layers * 4 W/layer`.
+
+### `attn+mlp` = adapt attention plus 3 MLP projections per layer
+
+```text
+q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj
+```
+
+The extra MLP weights have the 14336 intermediate dimension:
+
+```text
+gate_proj [14336,4096]
+up_proj   [14336,4096]
+down_proj [4096,14336]
+
+attn+mlp per layer = 81,920 * r
+whole model        = 2,621,440 * r       # 32 layers
+```
+
+This gives 224 adapters total: `32 layers * 7 W/layer`.
+
+### How to read the four A6 configs
+
+```text
+config              what it isolates                         trainable params
+r8  / attn          small-r, attention-only baseline           6.82M
+r16 / attn          r doubled, targets fixed                  13.63M
+r16 / attn+mlp      targets expanded, r fixed                 41.94M
+r64 / attn+mlp      r quadrupled, targets fixed              167.77M
+```
+
+Interpretation checks:
+
+```text
+r8/attn -> r16/attn:       if quality improves, r=8 was capacity-limited
+r16/attn -> r16/attn+mlp:  if quality improves, attention-only was under-covered
+r16/a+mlp -> r64/a+mlp:    if quality barely improves, r=64 is likely diminishing return
+```
+
+Carry this sentence into the GX10 run: **A6 holds `alpha/r = 2`, so the measured sweep is
+about capacity (`r`) and coverage (`target modules`), not LoRA branch strength.**

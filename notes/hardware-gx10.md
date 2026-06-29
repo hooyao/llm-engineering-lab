@@ -431,6 +431,135 @@ This unit is an **ASUS Ascent GX10** -- a partner system. Implications:
 - Long-form fleet experience reports:
   https://dredyson.com/ (search "DGX Spark")
 
+
+## PyTorch device semantics on GB10 unified memory (2026-06-29 discussion)
+
+This section records the current working model for PyTorch on DGX Spark / ASUS GX10. It is
+not yet backed by a local copy benchmark; run the benchmark plan below when the box is
+reachable.
+
+### Unified memory does not remove PyTorch device semantics
+
+PyTorch still exposes distinct `cpu` and `cuda` devices:
+
+```python
+x_cpu = torch.empty(..., device="cpu")
+x_gpu = x_cpu.to("cuda")
+model = model.to("cuda")
+```
+
+The hardware has one 128 GB LPDDR5x pool, but PyTorch's allocator, kernel dispatch, and
+autograd logic still distinguish CPU tensors from CUDA tensors. A CPU tensor is not
+automatically a CUDA tensor just because the platform is UMA. CUDA kernels still expect
+CUDA tensors.
+
+Relevant CUDA concepts, kept distinct:
+
+```text
+UVA (Unified Virtual Addressing):
+  CPU and GPU pointers live in one virtual address space; the runtime can classify them.
+
+cudaMallocManaged / CUDA Unified Memory:
+  managed allocation where the driver handles CPU/GPU access and migration/mapping.
+
+Pinned host memory:
+  page-locked CPU memory used for faster or asynchronous transfers.
+
+Hardware-coherent UMA:
+  CPU and GPU share one physical memory pool with coherence in hardware.
+```
+
+GB10 provides hardware-coherent UMA. PyTorch ordinary CPU tensors are still CPU tensors, and
+ordinary CUDA tensors are still CUDA tensors.
+
+### Does `model.to("cuda")` create two copies?
+
+For a plain tensor conversion:
+
+```python
+x_cpu = torch.empty(...)
+x_cuda = x_cpu.to("cuda")
+```
+
+there are two live storages while both tensors are referenced:
+
+```text
+CPU tensor storage
+CUDA tensor storage
+```
+
+On GX10 both consume the same 128 GB LPDDR5x capacity pool, but they are separate
+allocations with separate virtual addresses.
+
+For `nn.Module.to("cuda")`, the module conversion is in-place at the module-object level:
+parameters and buffers are moved/replaced and the method returns the same module object.
+Stable-state memory therefore usually has only the CUDA parameter storage, provided no other
+references keep the old CPU tensors alive.
+
+The dangerous part is the load/move peak:
+
+```python
+model = AutoModelForCausalLM.from_pretrained(path)  # may instantiate full CPU weights
+model.to("cuda")                                    # then allocate CUDA weights
+```
+
+During that transition, large models can temporarily require both CPU and CUDA storage. On
+GX10 those are not separate host RAM vs VRAM budgets; both count against the same 128 GB
+unified pool. A 70B BF16 checkpoint is about 140 GB for one copy, so a naive CPU-load-then-
+move path is not viable.
+
+Prefer loading paths that place or stream weights directly to the target device, for example
+HF/Accelerate low-CPU-memory and `device_map`-style paths, rather than constructing a full
+CPU model and then calling `.to("cuda")`.
+
+### Copy bandwidth: what is known vs unknown
+
+Public hardware numbers for this platform are:
+
+```text
+LPDDR5x aggregate bandwidth:          273 GB/s
+CPU<->GPU coherent interconnect:      600 GB/s bidirectional (GB10 figure used in this repo)
+CUDA copy engines listed by NVIDIA:   2
+```
+
+There is no local measurement yet for:
+
+```text
+PyTorch CPU tensor -> CUDA tensor `.to("cuda")` bandwidth
+CUDA `cudaMemcpy` H2D/D2H bandwidth on GB10
+pinned vs pageable transfer difference on GB10
+managed/shared direct-access bandwidth on GB10
+```
+
+Because source and destination reside in the same LPDDR5x pool, a semantic CPU-to-CUDA copy
+is not a PCIe host-DRAM-to-HBM transfer. For large explicit copies, the practical upper
+bound is likely DRAM-bandwidth-bound rather than NVLink-C2C-bound, because 273 GB/s memory
+bandwidth is below the 600 GB/s coherent interconnect figure. A copy also reads N bytes and
+writes N bytes, so a rough payload upper bound from aggregate memory bandwidth is:
+
+```text
+273 GB/s / 2 ~= 136 GB/s payload
+```
+
+Actual results can be lower due to copy-engine behavior, cache effects, page state,
+alignment, concurrent CPU/GPU traffic, and power/thermal limits. Treat the number above as a
+sanity bound, not a measured result.
+
+### Benchmark plan once GX10 is reachable
+
+Create a small benchmark under `experiments/bench/` to measure:
+
+```text
+1. pageable CPU tensor -> CUDA tensor `.to("cuda")` bandwidth
+2. pinned CPU tensor -> CUDA tensor `.to("cuda", non_blocking=True)` bandwidth
+3. CUDA tensor -> CPU tensor bandwidth
+4. optional: managed-memory direct access if a small CUDA extension is warranted
+```
+
+Record payload GB/s, tensor size, dtype, container tag, driver, CUDA version, and whether any
+other CPU/GPU workload was active. Add the result table to this file next to the existing
+GEMM measurements.
+
 ## Sources
 
 - NVIDIA DGX Spark Hardware Overview — https://docs.nvidia.com/dgx/dgx-spark/hardware.html

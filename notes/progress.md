@@ -131,7 +131,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), only the GX10 sweep pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10** (the only thing left: fill the MEASURED column in `predictions.md` — params vs predicted 6.82M/13.63M/41.94M/167.77M, adapter size to reverse-out fp32-vs-bf16, final loss, gen). See `predictions.md` + the **2026-06-25** log entry below. |
+| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1–D5 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` (default `ClassDefaultPolicy`: Read→Allow, else→Ask, +rule exceptions) + `IUserConfirmation` + `DefaultPermissionEngine`, gated in `RunOneToolAsync` before execute, fail-closed. Notes: `agent/experiments/d0{1..5}-*`. **Astra submodule at `e3b52a6`; 54 tests.** | D6 — context assembly (three-layer cache strategy) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. |
@@ -148,9 +148,9 @@ writing Astra code so you don't re-do or contradict prior work there.
 
 When the user is ready to continue, the natural next steps are:
 
-1. **Track A Day 1** of `curriculum-v2-execution.md`: write
-   `experiments/a01-mem-budget/budget.py` (memory arithmetic calculator). The user
-   has not started any curriculum days yet.
+1. **Track A A6/A7 continuation**: GX10 is currently unreachable from this machine. When a
+   GX10-reachable machine is available, run the A6 4-config LoRA sweep first, then implement
+   and run A7 QLoRA 8B using `experiments/a07-qlora-8b/theory-notes.md`.
 2. The `experiments/smoke-test/` script has been verified to run end-to-end (5 steps
    of LoRA-3B succeeded). The user has NOT yet executed the full 200-step run.
    If they ask "did we finish the smoke test?" the answer is "the pipeline is
@@ -173,6 +173,30 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-06-29 — A7 QLoRA theory notes + PyTorch/UMA hardware notes
+
+GX10 was still unreachable, so no A6/A7 metal run happened. Continued theory into A7 and
+captured the core QLoRA model in `experiments/a07-qlora-8b/theory-notes.md`: frozen base `W`
+is stored as NF4 4-bit codes, compute dequantizes blocks to bf16, LoRA A/B remain the
+trainable path, double quantization compresses quantization constants/scales, and paged
+optimizer helps memory spikes/capacity rather than creating extra bandwidth on GX10. Learner
+correctly identified that QLoRA quantizes frozen base `W` and that NF4 should use non-uniform
+bins.
+
+Also captured the DGX Spark unified-memory/PyTorch discussion in `notes/hardware-gx10.md`:
+PyTorch still exposes separate `cpu` and `cuda` tensor semantics; `.to("cuda")` can create a
+separate CUDA allocation even though both allocations live in the same 128 GB LPDDR5x pool;
+`model.to("cuda")` is in-place at the module-object level but CPU-load-then-move can create a
+dangerous temporary double-weight peak; published hardware bounds are 273 GB/s LPDDR5x and
+600 GB/s CPU-GPU coherent interconnect, but no local `.to("cuda")` bandwidth has been
+measured yet. Added a benchmark plan for later.
+### 2026-06-29 — Added compact A6 LoRA review card
+
+Added a short review card to `experiments/a06-lora-sweep/teaching-notes.md` for returning to
+A6 while GX10 is unreachable. It summarizes `r`, `alpha/r`, `attn-only`, `attn+mlp`, the
+four sweep configs, and the key interpretation rule: A6 pins `alpha/r = 2`, so the sweep
+isolates adapter capacity (`r`) and target-module coverage, not branch strength.
 
 ### 2026-06-25 — A6 theory completed OFFLINE (all 3 hyperparameters + prediction table); GX10 sweep deferred; two new CLAUDE.md rules
 
