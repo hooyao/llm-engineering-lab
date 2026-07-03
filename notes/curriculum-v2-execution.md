@@ -426,6 +426,21 @@ deeply enough to read `tiktoken` or HF tokenizers source.
 
 ## B4 — Attention and the Transformer block
 
+> **PULLED FORWARD (decided 2026-07-02).** This is scheduled next, out of Track B
+> order, before continuing D7 / Track A. Reason: it is a de-facto prerequisite the
+> learner has been hitting the lack of on every track (shape tracking — the standing
+> #1 difficulty; "a transformer isn't one matrix" at A6; seq_len / minimal-transformer
+> at A5; KV cache + prefill/decode at D6). Teach it **tutor-mode, learner-paced**
+> (A5/D6 method — small segment, verify each shape on a real tiny tensor, fold Q&A into
+> `experiments/b04-attention/learning-notes.md`), NOT as a race through the Karpathy
+> video. Honor the "Tensor Shapes — Always Spell Them Out" CLAUDE.md rule throughout:
+> name every dim, attach a real Llama-3.1-8B number, show input→output transform, pin
+> the scale (one token / one head / one layer). The full pretrain build (B5 nanoGPT
+> onward) stays in Track B at its original position — only the architecture day moves.
+> Payoff (co-designed on the day): the learner watches a single token flow through
+> one attention head with real shapes, and/or a numeric equivalence check against
+> PyTorch. See progress.md LOG 2026-07-02.
+
 **Why:** This is the architectural primitive that everything else is glued around.
 
 **Do:**
