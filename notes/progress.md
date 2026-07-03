@@ -134,7 +134,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
 | **B** Pretrain+RLHF | same file | none | B1 — micrograd (`experiments/b01-micrograd/`) |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D5 done, Linux-verified** — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` (default `ClassDefaultPolicy`: Read→Allow, else→Ask, +rule exceptions) + `IUserConfirmation` + `DefaultPermissionEngine`, gated in `RunOneToolAsync` before execute, fail-closed. Notes: `agent/experiments/d0{1..5}-*`. **Astra submodule at `e3b52a6`; 54 tests.** | D6 — context assembly (three-layer cache strategy) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D6 done** (D1–D5 Linux-verified) — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` + `IUserConfirmation` + `DefaultPermissionEngine`, fail-closed. **D6: context assembly — three-layer prefix (a system / b session-context memoized / c per-turn attachments, timeout-bounded); byte-stable a+b prefix for prompt-cache; `Astra.Core/Context/*` + `AgentLoop` wiring; PR #7 open.** Notes: `agent/experiments/d0{1..6}-*`. **Astra D6 branch at `c45c7c3`; 58 tests.** | D7 — compaction (four tiers: microcompact + full-compact sub-agent) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. **NOTE: learner flagged (2026-07-02) that missing a systematic transformer foundation is causing recurring shape/architecture confusion — consider inserting a focused transformer block (B4 pulled forward) before/around here; see LOG.** |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -173,6 +173,58 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-07-02 — Track D Day 6 done (context assembly, Astra PR #7) + learner flagged a transformer-foundation gap
+
+**D6 — context assembly.** Tutor mode, learner-paced (A2/A5 method), taught mostly
+off a REAL captured Claude Code request the learner supplied
+(`copilot-bridge/request-traces/20260616-025201-0001-inbound-req.json`) — this
+learner reasons from concrete wire bytes, so we hashed `system[]` across turns instead
+of describing it. Source read first per the Track D process fix
+(`agent/experiments/d06-context-assembly/source-reconciliation.md`: chapter 10 +
+`context.ts`).
+
+Taught: the prompt-cache prefix contract (prefix / exact-match / cascade-forward
+invalidation); the three layers by lifetime (a system prompt / b session context
+frozen / c per-turn attachments); `cache_control` as an "up-to-here" breakpoint. Two
+learner **misconceptions corrected** (both the direction-inversion shape of weak spot
+#1): (1) thought there was one message array — the fix was seeing `system[]` as a
+separate top-level field from `messages[]`; (2) said "c can't be cached next turn" —
+the truth is the reverse: an @-file attachment sinks into history and starts HITTING
+cache from the next turn (one-turn miss, then permanent hit). Also answered a
+closing Q on **prefill vs decode** and why a long prompt is slow even at 100% cache
+hit (decode attends over the whole sequence every step, KV-cache saves recompute not
+re-read, GX10 273 GB/s bandwidth wall) — the layer he'd deferred to A10/B13; folded
+into `learning-notes.md` Seg 7. This motivates D7 (compaction).
+
+**Shipped (Astra D6 branch `c45c7c3`, PR #7):** `src/Astra.Core/Context/` —
+`ISessionContextProvider` + `MemoizedSessionContext` (caches the Task not the string —
+one git subprocess, not two), `GitStatusContextProvider` (real `git status` once, with
+the "snapshot in time" preamble), `IAttachmentProvider` + `AttachmentGatherer` (all
+providers concurrent under one shared deadline; hung/throwing dropped, rest survive,
+provider order), `PeriodicReminderProvider`. `AgentLoop` builds the a+b system message
+once (b awaited first turn only, memoized), never rebuilt (byte-stable prefix); each
+turn gathers c and prepends `<attachment>` blocks to the user message. All new params
+optional → pre-D6 behavior preserved. Scope note: cannot emit Anthropic `cache_control`
+through M.E.AI `IChatClient` (provider-neutral) — deferred like D5's sandbox; the
+byte-stable prefix is the harness's job, the marker is a provider-layer optimization
+on top. **Tests 58/58** (54 pre-D6 unchanged + 4 new). **Payoff:**
+`samples/ContextAssemblyDemo` (no LLM) — a+b prefix hashes identical across 3 turns on
+REAL git status; reminder rides the user message every 2nd turn, system prefix
+unchanged; a 30s-hung provider dropped at a 200ms deadline, turn sent in ~205ms.
+Learner is reviewing the code via PR #7.
+
+**Learner-flagged curriculum gap (needs a decision next session): no systematic
+transformer foundation.** The learner observed that many of his stumbles (shape
+tracking — the standing #1 difficulty; "a transformer isn't one matrix"; attention;
+KV cache; now prefill/decode) trace to never having studied the transformer
+architecture end-to-end. It's currently scheduled as **Track B4** (pretrain track,
+late) but is a de-facto prerequisite for both tracks NOW. Options to weigh with him:
+(a) pull B4 forward as a standalone focused block before continuing D7/Track A;
+(b) keep shipping and teach transformer pieces just-in-time as they arise (status
+quo — clearly leaving gaps); (c) a hybrid: a short dedicated transformer day now
+(attention + the block structure + shapes), defer the full pretrain-scale build to
+B4. Recommend (c). NOT decided yet — surface at the start of next session.
 
 ### 2026-06-29 — Added centralized GX10 task list
 
