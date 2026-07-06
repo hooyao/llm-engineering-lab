@@ -106,7 +106,17 @@ choice.
 
 ## P1 — Hardware characterization needed by later decisions
 
-### 3. PyTorch CPU/CUDA copy bandwidth on GB10 unified memory
+### 3. PyTorch CPU/CUDA copy bandwidth on GB10 unified memory — DONE 2026-07-06
+
+**Status:** Completed 2026-07-06. Results in `notes/hardware-gx10.md` § "Unified-memory
+behavior measured on this unit (2026-07-06)" and logged in `notes/progress.md`. Probes ran
+ad-hoc on the box under `~/uvm-probe/` (CUDA C++ `uvm_probe.cu` + torch `torch_bw.py` /
+`torch_d2h.py` / `big_tensor.py`) rather than as a committed `experiments/bench/` script;
+port them into `experiments/bench/copy_bandwidth.py` only if a repeatable regression check is
+wanted. Headline numbers: H2D/D2H ≈ 59 GB/s (copy engine), D2D ≈ 114, in-place ATS kernel read
+≈ 198, pure device kernel ≈ 242; pinning gives no gain; `.to("cpu")` fresh-dst is an
+allocation trap (0.6 → 59.2 GB/s with preallocated `.copy_()`); `cudaMemcpy`/`.to()` is never
+zero-copy; one bf16 CUDA tensor allocated 85.9 GB.
 
 **Why:** Answer the open PyTorch/UMA question with measured data instead of inference.
 

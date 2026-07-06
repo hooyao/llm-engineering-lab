@@ -174,6 +174,44 @@ When the user is ready to continue, the natural next steps are:
 
 ## LOG (append new entries at the top)
 
+### 2026-07-06 — Measured GB10 unified-memory behavior on the box (resolves the P1 copy-bandwidth benchmark)
+
+User asked whether PyTorch supports unified memory on GB10, what the best practice is, and
+whether a CPU→CUDA copy gets optimized into zero-copy. Verified web claims first, then wrote
+and ran actual probes on the GX10 (`~/uvm-probe/`): a CUDA C++ program (`uvm_probe.cu`,
+`-arch=sm_121`) plus PyTorch scripts (`torch_bw.py`, `torch_d2h.py`, `big_tensor.py`). Results
+written up in `notes/hardware-gx10.md` → new section "Unified-memory behavior measured on this
+unit (2026-07-06)", and the stale "benchmark plan / known-vs-unknown" placeholders in the
+2026-06-29 PyTorch-semantics section were marked superseded. Key measured facts:
+
+- **Managed memory is genuinely shared in place**: `cudaMallocManaged` gives CPU and GPU the
+  same virtual address; CPU write → GPU kernel → CPU read all see one buffer. Plain `malloc()`
+  pointers are directly dereferenceable inside a kernel (ATS on: `pageableMemoryAccessUses
+  HostPageTables=1`).
+- **`cudaMemcpy` / `.to()` is never secretly zero-copy** — proved by mutating the source after
+  copy; device kept the old value. UMA does not collapse `cpu` and `cuda` tensors.
+- **Capacity just works**: one ordinary `device="cuda"` bf16 tensor allocated **85.9 GB** with
+  no special allocator. Managed memory is a zero-copy/shared-pointer tool on GB10, not a
+  capacity tool.
+- **Bandwidth**: `cudaMemcpy`/`.to()` H2D & D2H ≈ **59 GB/s** (copy engines); D2D ≈ 114; an
+  in-place kernel reading host memory over ATS ≈ **198 GB/s**; pure device kernel ≈ 242 (~89%
+  of 273). So the fast path to consume host data on GB10 is to let the kernel read it in place,
+  not to copy it over first — inverse of discrete-GPU intuition.
+- **Two traps documented**: (1) `pin_memory()` gives ~no transfer speedup here (no PCIe);
+  (2) `.to("cpu")` measured 59.5 GB/s with the result discarded but **0.1 GB/s when the result
+  is held alive** — an allocation trap, not bandwidth, and "held alive" is exactly what an
+  offload loop does. `.copy_()` into one preallocated reused host buffer stays at 59.2 GB/s.
+  Rule for offload loops: preallocate one host landing buffer and copy_ into it every step.
+- **One documented-but-false flag**: `directManagedMemAccessFromHost=0` on this box despite
+  NVIDIA docs saying Grace-Blackwell should report 1. Flagged, not asserted resolved; working
+  interpretation is the desktop GB10 keeps `cudaMallocManaged` on the traditional UVM
+  migration model while the ATS/system-pointer path is the truly in-place one.
+- PyTorch `2.12.0a0` in the 26.04 container has no UVM context manager yet (only `MemPool` /
+  `use_mem_pool`); the `cudaMallocManaged`-backed one is on PyTorch main, not shipped here.
+
+Next session that touches `notes/gx10-task-list.md` should mark the P1 "PyTorch CPU/CUDA
+copy-bandwidth benchmark" item done and point it at this section.
+
 ### 2026-06-29 — Added centralized GX10 task list
 
 Created `notes/gx10-task-list.md` as the single run queue for tasks that require the GX10.
