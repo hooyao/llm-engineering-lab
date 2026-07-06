@@ -681,12 +681,42 @@ direct-access behavior here; it did not reproduce.
 
 `nvcr.io/nvidia/pytorch:26.04-py3` ships PyTorch `2.12.0a0`. Its `torch.cuda.memory` exposes
 `MemPool` and `use_mem_pool` but **no** managed/UVM context manager. PyTorch main has since
-merged a `cudaMallocManaged`-backed UVM context manager in `torch/cuda/memory.py`, but it is
-not in this build. To route torch allocations through managed memory today you would attach a
-`torch.cuda.CUDAPluggableAllocator` wrapping `cudaMallocManaged`, or drive a `MemPool` with a
-custom allocator. In practice this is rarely needed on GB10: ordinary `device="cuda"` tensors
-already reach nearly the full 128 GB pool (the 85.9 GB single-tensor test above), so managed
-memory is a *shared-pointer / zero-copy* tool here, not a *capacity* tool.
+merged one — but as an **internal** helper `torch.cuda._use_uvm()` (underscore-prefixed, not
+in `__all__`), backed by a new `_make_uvm_allocator()` that builds a `cudaMallocManaged` +
+`cudaMemAdvise(SetPreferredLocation/SetAccessedBy)` allocator via `cuda-python`'s
+`cuda.bindings.runtime`, wraps it in `torch._C._cuda_customAllocator`, and drives it through a
+`MemPool`. There is **no** public `use_uvm` / `managed_memory` API even on main — checked the
+`__all__` list directly (2026-07-06).
+
+Availability checked on this box (2026-07-06):
+
+| Build | `hasattr(torch.cuda, "_use_uvm")` |
+|---|---|
+| container `2.12.0a0+…nv26.04` | **False** |
+| stock nightly `2.14.0.dev20260706+cu130` (aarch64) | **True**, allocates managed mem on GB10 |
+
+Two facts worth keeping:
+
+1. **Stock aarch64 wheels run on GB10.** From PyTorch 2.11, `pip install torch` on aarch64
+   defaults to CUDA 13.0 wheels; the nightly `2.14.0.dev+cu130` wheel ran real sm_121 matmuls
+   and `_use_uvm()` on this unit with no NVIDIA container. So a plain `pip install --pre torch`
+   is a viable path to the newest APIs when the container lags — though the user's default is
+   to stay inside the NGC container.
+2. **You don't need the nightly to use UVM in the 26.04 container.** Every dependency of
+   `_use_uvm` already exists there (`MemPool`, `use_mem_pool`, `torch._C._cuda_customAllocator`,
+   and the preinstalled `cuda-python`). `experiments/bench/uvm_pool.py` backports the upstream
+   `_make_uvm_allocator` + `_use_uvm` verbatim so `with use_uvm(): ...` works in the current
+   container. Self-check on this box (`run-uvm-pool-26.04.sh`, 2026-07-06): a tensor allocated
+   inside `use_uvm()` reports `cudaPointerGetAttributes.type = 3 (MANAGED)`, a GPU kernel on it
+   is numerically correct, and an ordinary `device="cuda"` tensor stays `type = 2 (device)` for
+   contrast. Drop the backport and call `torch.cuda._use_uvm()` directly once a container ships
+   a torch build that has it.
+
+In practice this is rarely needed on GB10: ordinary `device="cuda"` tensors already reach
+nearly the full 128 GB pool (the 85.9 GB single-tensor test above), so managed memory is a
+*shared-pointer / zero-copy / oversubscription* tool here, not a *capacity* tool — and the
+upstream docstring itself warns UVM is slower than explicit placement for workloads that fit,
+due to page faults.
 
 ## Sources
 

@@ -174,6 +174,30 @@ When the user is ready to continue, the natural next steps are:
 
 ## LOG (append new entries at the top)
 
+### 2026-07-06 — Backported PyTorch's new UVM context manager into the 26.04 container
+
+Follow-up to the same-day UVM measurement: user asked whether PyTorch had shipped a newer
+managed-memory API and, if so, to try it — but wanted to stay inside the NGC container (no
+local install). Findings:
+
+- **The new API is `torch.cuda._use_uvm()`** — an *internal* (underscore, not in `__all__`)
+  context manager on PyTorch **main** only, not in any stable tag. It builds a
+  `cudaMallocManaged` + `cudaMemAdvise` allocator via `cuda-python` and drives it through a
+  `MemPool`. There is no *public* `use_uvm`/`managed_memory` API even on main (checked `__all__`).
+- **Availability on this box**: container `2.12.0a0` → `_use_uvm` absent; stock nightly
+  `2.14.0.dev+cu130` (aarch64) → present and allocates managed memory on GB10. Also confirmed
+  stock aarch64 wheels run sm_121 (2.11+ defaults to cu130 wheels) — a `pip install --pre torch`
+  would work, but user prefers the container.
+- **Backported it without upgrading the container**: `experiments/bench/uvm_pool.py` ports
+  upstream `_make_uvm_allocator` + `_use_uvm` verbatim; all deps already exist in 26.04
+  (`MemPool`, `use_mem_pool`, `torch._C._cuda_customAllocator`, preinstalled `cuda-python`).
+  Self-check (`run-uvm-pool-26.04.sh`) PASSED on the box: tensor in `use_uvm()` reports
+  `cudaPointerGetAttributes.type = 3 (MANAGED)`, GPU kernel on it is correct, ordinary cuda
+  tensor stays `type = 2 (device)`.
+- Wrote it up in `notes/hardware-gx10.md` → "PyTorch managed/UVM allocator availability"
+  subsection (replaced the old placeholder). Reminder there: delete the backport and call
+  `torch.cuda._use_uvm()` directly once an NGC container ships a torch build that has it.
+
 ### 2026-07-06 — Measured GB10 unified-memory behavior on the box (resolves the P1 copy-bandwidth benchmark)
 
 User asked whether PyTorch supports unified memory on GB10, what the best practice is, and
