@@ -434,9 +434,10 @@ This unit is an **ASUS Ascent GX10** -- a partner system. Implications:
 
 ## PyTorch device semantics on GB10 unified memory (2026-06-29 discussion)
 
-This section records the current working model for PyTorch on DGX Spark / ASUS GX10. It is
-not yet backed by a local copy benchmark; run the benchmark plan below when the box is
-reachable.
+This section records the current working model for PyTorch on DGX Spark / ASUS GX10. The copy
+benchmark that was planned at the end of this section **has now been run on the box** — see
+"Unified-memory behavior measured on this unit (2026-07-06)" below for the numbers, which
+replace the earlier estimates.
 
 ### Unified memory does not remove PyTorch device semantics
 
@@ -514,6 +515,13 @@ CPU model and then calling `.to("cuda")`.
 
 ### Copy bandwidth: what is known vs unknown
 
+> **Superseded by measurement (2026-07-06).** The "no local measurement yet" list below has
+> been filled in — see "Unified-memory behavior measured on this unit (2026-07-06)". Kept for
+> the reasoning; the actual numbers (H2D/D2H ~59 GB/s copy-engine, D2D ~114, in-place kernel
+> ~198–242, the pinned-is-useless and preallocate-your-host-buffer findings) live in that
+> section. The "~136 GB/s payload sanity bound" guess turned out to bound the *kernel* path,
+> not the *copy-engine* path, which is lower at ~59 GB/s.
+
 Public hardware numbers for this platform are:
 
 ```text
@@ -545,20 +553,170 @@ Actual results can be lower due to copy-engine behavior, cache effects, page sta
 alignment, concurrent CPU/GPU traffic, and power/thermal limits. Treat the number above as a
 sanity bound, not a measured result.
 
-### Benchmark plan once GX10 is reachable
+### Benchmark plan once GX10 is reachable — DONE (2026-07-06)
 
-Create a small benchmark under `experiments/bench/` to measure:
+The four measurements planned here were run on the box on 2026-07-06. Results are in the next
+section. Kept here as a pointer so the plan and its execution stay linked.
+
+## Unified-memory behavior measured on this unit (2026-07-06)
+
+Driver `580.159.03`, CUDA forward-compat `13.2` (driver 595.58.03), containers
+`nvcr.io/nvidia/pytorch:26.04-py3` (PyTorch `2.12.0a0`) for the torch tests and
+`nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04` (`nvcc 13.2`, `-arch=sm_121`) for the CUDA
+C++ probe. Scripts live on the box under `~/uvm-probe/` (`uvm_probe.cu`, `torch_bw.py`,
+`torch_d2h.py`, `big_tensor.py`). This section resolves the earlier "known vs unknown" and
+"benchmark plan" placeholders with actual data, and corrects two guesses that were wrong.
+
+### Capability flags (ground truth from `cudaGetDeviceProperties`)
 
 ```text
-1. pageable CPU tensor -> CUDA tensor `.to("cuda")` bandwidth
-2. pinned CPU tensor -> CUDA tensor `.to("cuda", non_blocking=True)` bandwidth
-3. CUDA tensor -> CPU tensor bandwidth
-4. optional: managed-memory direct access if a small CUDA extension is warranted
+name = NVIDIA GB10   compute capability = 12.1 (sm_121)   SMs = 48
+totalGlobalMem (CUDA)   = 121.6 GB
+total_memory (torch)    = 124546 MB   (~121.6 GB visible to the CUDA allocator)
+mem_get_info total      = 130.6 GB    (torch.cuda.mem_get_info, whole pool view)
+
+unifiedAddressing                      = 1
+managedMemory                          = 1
+concurrentManagedAccess                = 1   # CPU and GPU may access managed mem concurrently
+pageableMemoryAccess                   = 1   # a plain malloc() pointer is legal inside a kernel
+pageableMemoryAccessUsesHostPageTables = 1   # ATS on: GPU walks the CPU page tables
+directManagedMemAccessFromHost         = 0   # <-- see "the one documented-but-false flag" below
 ```
 
-Record payload GB/s, tensor size, dtype, container tag, driver, CUDA version, and whether any
-other CPU/GPU workload was active. Add the result table to this file next to the existing
-GEMM measurements.
+`nvidia-smi --query-gpu=memory.total` returns `[N/A]` on this box — NVML does not expose a
+framebuffer size for the GB10 iGPU. Use `torch.cuda.mem_get_info()` (returns
+`free,total`) or `cudaMemGetInfo`, not NVML, for capacity queries.
+
+### Four functional experiments (CUDA C++, `uvm_probe.cu`)
+
+| # | Test | Result | Meaning |
+|---|---|---|---|
+| A | `cudaMallocManaged`; CPU writes 1.0, GPU kernel `+1`, CPU reads back | CPU reads `2.0`; `hostPtr == devicePtr` (same VA), `pointerAttr.type = managed` | Managed memory is genuinely shared in place — one allocation, one address, both processors see each other's writes after sync |
+| B | Plain `malloc()` pointer dereferenced **directly inside a kernel** (no `cudaMemcpy`, no managed alloc) | `err = no error`; CPU immediately sees the kernel's writes | ATS works: system-allocated (`malloc`) memory is directly addressable by the GPU with zero copy |
+| C | `cudaMemcpy` H2D, then mutate the source, then read device | device retains the pre-mutation value → **independent copy** | `cudaMemcpy` always produces a real, separate copy — it is **never** silently aliased to zero-copy even though src and dst are the same physical DRAM |
+| — | PyTorch: allocate one `bfloat16` CUDA tensor of 85.9 GB | succeeds; `memory_allocated = 85.9 GB`, `mem_get_info` free drops 81.5 → 1.5 GB | A single ordinary `device="cuda"` tensor can occupy most of the 128 GB pool with no special allocator — capacity "just works" |
+
+### Bandwidth (512 MB buffer, aggregate DRAM peak 273 GB/s)
+
+CUDA C++ (`uvm_probe.cu`):
+
+| Path | GB/s | Note |
+|---|---:|---|
+| `cudaMemcpy` H2D, pageable `malloc` source | 59.3 | one-directional payload |
+| `cudaMemcpy` H2D, **pinned** source | 58.9 | **pinning gives no speedup** (no PCIe to hide) |
+| `cudaMemcpy` D2H, dev → pinned | 58.9 | symmetric with H2D |
+| `cudaMemcpy` D2D, dev → dev | 113.2 | copy-engine, one-directional payload |
+| kernel `streamCopy` dev ← dev | 242.5 | R+W summed; ~89% of 273 GB/s peak |
+| kernel `streamCopy` dev ← **`malloc` host** (ATS, no memcpy) | 197.8 | R+W summed; GPU reads host memory in place over C2C |
+
+PyTorch `.to()` (`torch_bw.py`, `torch_d2h.py`), same 512 MB:
+
+| Path | GB/s | Note |
+|---|---:|---|
+| pageable CPU → cuda, `.to("cuda")` | 55.9 | matches the C++ H2D number |
+| pinned CPU → cuda, `.to("cuda", non_blocking=True)` | 59.0 | pinning ≈ no gain, as in C++ |
+| cuda → cuda, `.clone()` | 114.2 | matches C++ D2D |
+| cuda → CPU, `.to("cpu")` (result discarded each call) | 59.5 | true D2H bandwidth; allocator recycles the dst |
+| cuda → CPU, `.to("cpu")` (**result held alive** = offload) | **0.1** | **allocation-bound, not bandwidth-bound — see below** |
+| cuda → CPU, `.copy_()` into **preallocated reused** host dst | 59.2 | the correct offload pattern; pinning irrelevant |
+
+### Three conclusions that change how we write PyTorch on this box
+
+1. **`cudaMemcpy` / `.to()` is never secretly zero-copy (Exp C).** Semantically it always
+   copies. If you want zero-copy CPU/GPU sharing you must use a *different* API (managed
+   allocation, or hand a system pointer to a kernel via ATS), not `.to()`. The earlier
+   section's device-semantics model is correct: UMA does not collapse `cpu` and `cuda`
+   tensors into one storage.
+
+2. **The `.to("cpu")` 0.1 GB/s cliff is an allocation trap, not a hardware limit.** Copying
+   device→host measured 59.5 GB/s when the result tensor is *discarded* each call (PyTorch's
+   host caching allocator recycles the buffer), but collapsed to **0.1 GB/s when the result is
+   held alive** — which is exactly what an offload loop does, since you offload precisely to
+   keep the tensor on the host. Holding it blocks allocator recycling, so every call really
+   allocates fresh pageable host pages (page-fault + zero-fill). That ~600× gap is destination
+   allocation, not transfer. Switching to `.copy_()` into a single preallocated, reused host
+   buffer restored 59.2 GB/s. Practical rule for offload loops (ZeRO/FSDP-style optimizer or
+   activation spill to the host portion of the pool): **preallocate one host landing buffer and
+   `.copy_()` into it every step**; never allocate a new CPU tensor you keep. This dwarfs any
+   pinned-vs-pageable consideration. (The originally-reported 0.6 GB/s came from a variant that
+   held exactly one prior result; holding several makes the trap sharper at ~0.1.)
+
+3. **Pinned memory buys nothing for transfers here (both C++ and torch).** On a discrete GPU,
+   `pin_memory()` lets DMA bypass a staging copy across PCIe. GB10 has no PCIe between CPU and
+   GPU, so pinned and pageable H2D/D2H are within noise (58.9 vs 59.3; 59.0 vs 55.9). Skip
+   `pin_memory=True` as a transfer optimization on this box — it only adds pinning cost. (It
+   may still matter for overlapping copy with compute via streams; that was not tested.)
+
+### Why explicit copies top out at ~59 GB/s while kernels hit ~198–242
+
+The `cudaMemcpy` / `.to()` path uses the 2 copy engines and measured ~59 GB/s one-directional.
+A compute kernel that reads host memory in place over ATS reached 197.8 GB/s (R+W summed), and
+a pure device-resident kernel reached 242.5 GB/s (~89% of the 273 GB/s aggregate). So on GB10
+the fast way to consume host-resident data from the GPU is **not** to `cudaMemcpy` it over and
+then compute — it is to let the kernel read it directly (ATS / system-allocated pointer, or a
+managed allocation). The explicit-copy path is the slow path here, the inverse of the
+discrete-GPU intuition where you copy to VRAM precisely to get bandwidth. This matches the
+earlier "~136 GB/s payload sanity bound" reasoning only loosely: the *copy-engine* path is
+well below that bound (59, not 136), while the *in-place kernel* path exceeds it because it is
+not a copy at all.
+
+### The one documented-but-false flag: `directManagedMemAccessFromHost = 0`
+
+NVIDIA's CUDA Programming Guide (Unified and System Memory) states that on NVLink-C2C + ATS
+systems (Grace Hopper / Grace Blackwell), `cudaDevAttrDirectManagedMemAccessFromHost` is 1 —
+i.e. GPU-resident *managed* memory can be read by the CPU without migration. On this GB10 the
+attribute reads **0**, while `pageableMemoryAccessUsesHostPageTables = 1` confirms ATS is
+genuinely on and Exp A/B confirm in-place sharing works functionally.
+
+Working interpretation (flagged as such, not asserted as NVIDIA-confirmed): GB10 is a desktop
+GB10 SKU, and its driver appears to keep the `cudaMallocManaged` path on the **traditional UVM
+migration model** (`directManaged=0`), while the **system-allocated / ATS path** (plain
+`malloc`, ordinary torch CPU tensors handed to a kernel) is the one that is truly in-place and
+zero-copy — which Exp B and the 197.8 GB/s in-place kernel read both support. So on this box,
+prefer the ATS/system-pointer route over `cudaMallocManaged` when you specifically want
+in-place host access from the GPU. Do not rely on the documented Grace-Hopper managed-memory
+direct-access behavior here; it did not reproduce.
+
+### PyTorch managed/UVM allocator availability (as of this container)
+
+`nvcr.io/nvidia/pytorch:26.04-py3` ships PyTorch `2.12.0a0`. Its `torch.cuda.memory` exposes
+`MemPool` and `use_mem_pool` but **no** managed/UVM context manager. PyTorch main has since
+merged one — but as an **internal** helper `torch.cuda._use_uvm()` (underscore-prefixed, not
+in `__all__`), backed by a new `_make_uvm_allocator()` that builds a `cudaMallocManaged` +
+`cudaMemAdvise(SetPreferredLocation/SetAccessedBy)` allocator via `cuda-python`'s
+`cuda.bindings.runtime`, wraps it in `torch._C._cuda_customAllocator`, and drives it through a
+`MemPool`. There is **no** public `use_uvm` / `managed_memory` API even on main — checked the
+`__all__` list directly (2026-07-06).
+
+Availability checked on this box (2026-07-06):
+
+| Build | `hasattr(torch.cuda, "_use_uvm")` |
+|---|---|
+| container `2.12.0a0+…nv26.04` | **False** |
+| stock nightly `2.14.0.dev20260706+cu130` (aarch64) | **True**, allocates managed mem on GB10 |
+
+Two facts worth keeping:
+
+1. **Stock aarch64 wheels run on GB10.** From PyTorch 2.11, `pip install torch` on aarch64
+   defaults to CUDA 13.0 wheels; the nightly `2.14.0.dev+cu130` wheel ran real sm_121 matmuls
+   and `_use_uvm()` on this unit with no NVIDIA container. So a plain `pip install --pre torch`
+   is a viable path to the newest APIs when the container lags — though the user's default is
+   to stay inside the NGC container.
+2. **You don't need the nightly to use UVM in the 26.04 container.** Every dependency of
+   `_use_uvm` already exists there (`MemPool`, `use_mem_pool`, `torch._C._cuda_customAllocator`,
+   and the preinstalled `cuda-python`). `experiments/bench/uvm_pool.py` backports the upstream
+   `_make_uvm_allocator` + `_use_uvm` verbatim so `with use_uvm(): ...` works in the current
+   container. Self-check on this box (`run-uvm-pool-26.04.sh`, 2026-07-06): a tensor allocated
+   inside `use_uvm()` reports `cudaPointerGetAttributes.type = 3 (MANAGED)`, a GPU kernel on it
+   is numerically correct, and an ordinary `device="cuda"` tensor stays `type = 2 (device)` for
+   contrast. Drop the backport and call `torch.cuda._use_uvm()` directly once a container ships
+   a torch build that has it.
+
+In practice this is rarely needed on GB10: ordinary `device="cuda"` tensors already reach
+nearly the full 128 GB pool (the 85.9 GB single-tensor test above), so managed memory is a
+*shared-pointer / zero-copy / oversubscription* tool here, not a *capacity* tool — and the
+upstream docstring itself warns UVM is slower than explicit placement for workloads that fit,
+due to page faults.
 
 ## Sources
 
@@ -579,3 +737,7 @@ GEMM measurements.
 - NVIDIA forum, "DGX SPAK GPU power usage cap at 14W" (March 2026 workaround thread) — https://forums.developer.nvidia.com/t/dgx-spak-gpu-power-usage-cap-at-14w/363487
 - Dre Dyson, "A CTO's Definitive Guide to Resolving DGX Spark GPU Power Draw Degradation" (fleet of 14 units, May 2026) — https://dredyson.com/a-ctos-definitive-guide-to-resolving-dgx-spark-gpu-power-draw-degradation/
 - joeynyc/spark-doctor (DGX Spark diagnostic CLI, detects 14 W cap and other GB10-specific issues) — https://github.com/joeynyc/spark-doctor
+- NVIDIA CUDA Programming Guide, "Unified and System Memory" (ATS, directManagedMemAccessFromHost, Grace Hopper/Blackwell behavior) — https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/understanding-memory.html
+- NVIDIA CUDA Runtime API, Memory Management (`cudaMallocManaged`, managed-memory access rules) — https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html
+- PyTorch main, `torch/cuda/memory.py` (merged `cudaMallocManaged`/UVM context manager, not yet in the 26.04 container) — https://github.com/pytorch/pytorch/blob/main/torch/cuda/memory.py
+- PyTorch issue #124296 / #98481 (requests for native managed-memory allocator support; CUDAPluggableAllocator status) — https://github.com/pytorch/pytorch/issues/124296
