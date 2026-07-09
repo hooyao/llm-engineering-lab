@@ -132,7 +132,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | Track | What | Done so far | Next concrete step |
 |---|---|---|---|
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
-| **B** Pretrain+RLHF | same file | none | **B4 (Attention + transformer block) PULLED FORWARD — this is the next scheduled day across ALL tracks** (decided 2026-07-02: de-facto prerequisite the learner keeps hitting; tutor-paced, shape-first, not a video race). Then B1 — micrograd (`experiments/b01-micrograd/`). |
+| **B** Pretrain+RLHF | same file | **B1 DONE (theory + working engine), as REVIEW/gap-fill.** Reverse-mode autodiff taught as 4 steps (forward builds graph / local derivative / chain rule / reverse-topo + accumulate) + the notation traps (`d` is the derivative operator not division; `de/da != e/a`; the two-equals-signs `dL/dd = f = 2.0` = rule-then-plug-in) + a 3rd op `tanh` (`do/dz = 1 - o^2`). `experiments/b01-micrograd/{micrograd.py (Value class + 4 demos, ALL PASS incl. a trained neuron loss 3.86->0.007), learning-notes.md (fact-based, mermaid graphs per step, activation-extended)}`. **B4 has a Segment-0 stub only** (`experiments/b04-attention/learning-notes.md` — the "attention is the only cross-token op" frame, not yet taught). | **B2 — makemore (scalar->tensor jump: embedding/softmax/cross-entropy).** OR resume B4 (attention) which is still the pulled-forward priority. Learner is doing Track B from the start as review; B1's engine is ready to be re-typed from memory (Karpathy "type don't paste") on the new machine. |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
 | **D** Agent eng | `agent/curriculum-agent.md` | **D1–D6 done** (D1–D5 Linux-verified) — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` + `IUserConfirmation` + `DefaultPermissionEngine`, fail-closed. **D6: context assembly — three-layer prefix (a system / b session-context memoized / c per-turn attachments, timeout-bounded); byte-stable a+b prefix for prompt-cache; `Astra.Core/Context/*` + `AgentLoop` wiring; PR #7 open.** Notes: `agent/experiments/d0{1..6}-*`. **Astra D6 branch at `c45c7c3`; 58 tests.** | D7 — compaction (four tiers: microcompact + full-compact sub-agent) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. **NOTE: learner flagged (2026-07-02) that missing a systematic transformer foundation is causing recurring shape/architecture confusion — consider inserting a focused transformer block (B4 pulled forward) before/around here; see LOG.** |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
@@ -173,6 +173,96 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-07-09 — Track B1 done (micrograd, review/gap-fill) + HANDOFF for "continue Track B" on a new machine
+
+> **New session, learner said "continue Track B / continue learning": read this whole
+> block, then `experiments/b01-micrograd/learning-notes.md` IN FULL, then the A2 learner
+> diagnostic (`experiments/a02-sft-1b/learning-notes.md` end). The learner is switching
+> machines and expects the new session to pick up seamlessly. This machine has NO torch
+> (demo 3 cross-check skipped here — see below).**
+
+**Why the learner jumped to Track B.** Mid-session the learner said Path A + agent work
+had gotten tiring and transformer confusion was the blocker; asked to switch to "the
+transformer path." Correctly, that path is already queued (B4 pulled forward, 2026-07-02).
+But the learner then chose to do **Track B from the very start as review / gap-fill**,
+in gaps between other Claude Code work — so we did **B1 first**, not B4. B1 is pure
+scalar theory, needs no GPU, ideal for offline fragments of time.
+
+**Why B1 and not skip to B4:** B1/B2's core (backprop, gradient, chain rule) was
+partly absorbed via Track A, but the learner had never seen what happens BETWEEN
+`.backward()` and `.grad` being filled — Track A used autograd as a black box. B1 builds
+that black box by hand. Confirmed real gaps existed (below), so the review paid off.
+
+**B1 taught (tutor mode, learner-paced, A2/A5/D6 method). Real confusions surfaced and
+fixed — these are the value of the day:**
+- Learner's recalled kernel "grad 用 forward 的 activation 值 + backward 算出来" graded
+  CORRECT but partial (2 of 4 pieces). Reframed reverse-mode autodiff as **4 explicit
+  steps**: (1) forward builds a computation graph, (2) each node's LOCAL derivative
+  (multiply reads the sibling's forward value; add = 1), (3) chain rule = multiply locals
+  along a path, (4) reverse-topological walk + accumulate (`+=`) at fan-out.
+- **Notation trap 1** — thought `dL/dd = f = 2.0` blended forward and backward. Fixed:
+  it's the backward phase READING a forward value; the two `=` are rule-then-plug-in.
+  Adopted a de-mixed 3-row layout (forward-leaves / rule / plug-in).
+- **Notation trap 2** — "de/da = b = -3.0 看不懂." Taught the `de/da` symbol = a
+  multiplier, and the multiply rule "deriv w.r.t. one input = the OTHER input."
+- **Notation trap 3 (the deep one)** — "e/a=b 那为什么 de/da=b?" Root cause: reading
+  `d` as division and colliding with the node literally named `d`. Fixed: **`d` is the
+  differentiation OPERATOR, not a number, not division**; `de/da != e/a` (shown with
+  `e=a*a`: e/a=2 but de/da=4). This is a reusable Track-C trap; it's written up as a
+  standalone fact block.
+- **Activation added as the B1 finish** — a 3rd op `tanh` (squashes to (-1,1); non-linearity
+  that makes stacked neurons > one linear map). One local rule reading its OWN output:
+  `do/dz = 1 - o^2` — same "derivative via output" shape as A2's sigmoid. The saturated
+  example (z=-2, do/dz=0.0708) is a first sighting of vanishing gradient.
+
+**Shipped `experiments/b01-micrograd/`:**
+- `micrograd.py` — a by-hand scalar reverse-mode autodiff engine. `Value` class with
+  `__add__`/`__mul__`/`tanh` (each builds a node + a `_backward` closure) and `backward()`
+  (topo-sort, seed `grad=1`, reverse walk, `+=`). **4 demos, all pass:** (1) worked example,
+  engine == hand-derived (a=-6,b=4,c=2,f=4); (2) fan-out accumulation (x.grad=3 = 2+1);
+  (3) torch.autograd cross-check (**skipped on THIS machine — no torch installed; run it
+  where torch exists to get the 3-way agreement line**); (4) **one neuron trained by our
+  own backward()** — out -0.964 -> +0.914 toward target +1.0, loss 3.86 -> 0.007.
+- `learning-notes.md` — fact-based reference (learner asked to strip Q&A and de-clutter):
+  notation facts up front, the 4 steps each with VALUES + a **mermaid graph**, then a full
+  "Extending Steps 1-4 with activation" section (the neuron, each step re-drawn with the
+  purple tanh node). Graph format the learner converged on: LR layout, every node self-
+  contained (equation + value + full chain-rule derivation inside the node), values listed
+  above each diagram.
+
+**Payoff (what the learner SAW):** demo 4 — a neuron trained end-to-end by the engine they
+just built; loss falls 500x on screen. The three rules (multiply/add/tanh) are provably
+enough.
+
+**B4 status:** only a Segment-0 stub exists (`experiments/b04-attention/learning-notes.md`
+— the "everything except attention is per-token; attention is the one cross-token op" frame).
+NOT taught yet. It remains the pulled-forward priority whenever the learner wants the
+transformer block specifically.
+
+**HOW TO RESUME on the new machine (do in order):**
+1. Read `experiments/b01-micrograd/learning-notes.md` IN FULL (fact-based, has all 4 steps
+   + activation with mermaid graphs). Then the A2 learner diagnostic
+   (`experiments/a02-sft-1b/learning-notes.md`, end) — the single most important file for
+   teaching THIS learner (systems/precision instinct; derives from linear-regression
+   anchors + concrete numbers; weak spots = umbrella-vs-kind direction inversion + fusing
+   nested scales; terminal can't render LaTeX subscripts — write math as code; conversation
+   中文, ML terms in English never translated).
+2. **These files are UNCOMMITTED and on branch `main`** (untracked: `experiments/b01-micrograd/`
+   and `experiments/b04-attention/`). To move machines: commit + push them, OR the learner
+   pulls after this session's commit. Confirm they're committed before switching, or they
+   won't be on the new box.
+3. Two natural next steps, learner's call: **(a) B2 — makemore** (the scalar->tensor jump:
+   embedding / softmax / cross-entropy / a char-level LM that generates fake names; shape
+   tracking — the #1 difficulty — returns here, so honor the "Tensor Shapes" CLAUDE.md rule
+   hard); **(b) resume B4 — attention** (still the pulled-forward priority; Segment-0 stub
+   is written, continue from there). Teach either in TUTOR mode, learner-paced, fold Q&A
+   into that day's learning-notes.
+4. On the new machine, if it has torch, run `python experiments/b01-micrograd/micrograd.py`
+   to get demo 3's 3-way agreement line (this machine had no torch). Nothing else is
+   environment-dependent — B1 is pure Python, no GPU, no GX10.
+
+
 
 ### 2026-07-06 — Backported PyTorch's new UVM context manager into the 26.04 container
 
