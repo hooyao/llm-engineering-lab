@@ -3,6 +3,10 @@
 Hands-on LLM engineering, built from scratch on a single NVIDIA GB10 box
 (ASUS Ascent GX10, 128 GB unified memory). Two tracks, every artifact runnable.
 
+Claude Code reads `CLAUDE.md` directly. Codex's `AGENTS.md` bootstrap requires
+the same canonical file, with `.codex/config.toml` as a native fallback, so both
+clients use one instruction source without drift.
+
 ## Model engineering
 
 Fine-tuning and pretraining end to end, sized against real hardware limits:
