@@ -137,7 +137,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
 | **B** Pretrain+RLHF | same file | **B1 DONE (theory + working engine), as REVIEW/gap-fill.** Reverse-mode autodiff taught as 4 steps (forward builds graph / local derivative / chain rule / reverse-topo + accumulate) + the notation traps (`d` is the derivative operator not division; `de/da != e/a`; the two-equals-signs `dL/dd = f = 2.0` = rule-then-plug-in) + a 3rd op `tanh` (`do/dz = 1 - o^2`). `experiments/b01-micrograd/{micrograd.py (Value class + 4 demos, ALL PASS incl. a trained neuron loss 3.86->0.007), learning-notes.md (fact-based, mermaid graphs per step, activation-extended)}`. **B4 has a Segment-0 stub only** (`experiments/b04-attention/learning-notes.md` — the "attention is the only cross-token op" frame, not yet taught). | **B2 — makemore (scalar->tensor jump: embedding/softmax/cross-entropy).** OR resume B4 (attention) which is still the pulled-forward priority. Learner is doing Track B from the start as review; B1's engine is ready to be re-typed from memory (Karpathy "type don't paste") on the new machine. |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D7 done** (D1–D5 Linux-verified) — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` + `IUserConfirmation` + `DefaultPermissionEngine`, fail-closed. D6: three-layer context assembly + byte-stable a+b prefix. **D7: explicit compaction result union; cache-aware allowlisted microcompact; LLM full compact with verbatim recent tail; atomic preflight before every model round-trip; local `gpt-5.6-sol` payoff confirmed by learner.** Notes: `agent/experiments/d0{1..7}-*`. **Astra PR #8 open at `b7b07bb`; 70 tests.** | **D8 — multi-agent coordinator:** two isolated workers, condensed summaries, single-threaded writes, and measured token multiple. OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. **Transformer foundation gap remains; see 2026-07-02 LOG.** |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D7 done** (D1–D5 Linux-verified) — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` + `IUserConfirmation` + `DefaultPermissionEngine`, fail-closed. D6: three-layer context assembly + byte-stable a+b prefix. D7: explicit compaction result union; cache-aware allowlisted microcompact; LLM full compact with verbatim recent tail; atomic preflight before every model round-trip. **Post-D7 usability follow-up: Claude-compatible `Read` / `Write` / `Edit` / `Glob` / `Grep`, newline/BOM-safe exact editing, opt-in multi-root restriction, and direct confirmed `PowerShellTool`; real `gpt-5.6-sol` large-file/create flows verified; 94 tests; merged via Astra PR #9.** Notes: `agent/experiments/d0{1..7}-*`. **Astra is at `main@cffdf7a`.** | **D8 — multi-agent coordinator:** two isolated workers, condensed summaries, single-threaded writes, and measured token multiple. OR the deferred D4 control-plane / full InputSchema validation. **Transformer foundation gap remains; see 2026-07-02 LOG.** |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -176,6 +176,55 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-08-28 — Astra CLI file + PowerShell tools merged via PR #9
+
+- The learner discovered that the merged CLI registered only
+  `GetCurrentTimeTool`; `BashTool` existed in Core but no read/write/edit file
+  tool was available to the model.
+- Implemented the familiar Claude Code-compatible `Read`, `Write`, `Edit`,
+  `Glob`, and `Grep` contracts on Astra branch `codex/file-tools`, adapting the
+  fail-closed restricted path policy from Microsoft Semantic Kernel's
+  `FileIOPlugin` without adding a Semantic Kernel dependency. Absolute local paths are
+  unrestricted by default; one or more `--workspace` values opt into a hard
+  multi-root allowlist. UNC/device paths remain unsupported.
+- Wired the tools into the CLI. `Read`, `Glob`, and `Grep` are allowed by class
+  policy; `Write` and `Edit` use `DefaultPermissionEngine` and a real console
+  `[y/N]` confirmation. Repeated
+  `--workspace <path>` values optionally select explicit file boundaries without
+  depending on Rider's working-directory choice.
+- `Read` preserves LF, CRLF, and CR exactly. `Edit` preserves those terminators
+  and a UTF-8 BOM, accepts whitespace-only matches, and fails atomically on zero
+  or ambiguous matches. `Write` creates missing parent directories and performs
+  a complete atomic create/overwrite after approval. `Glob` and `Grep` provide
+  bounded native discovery without a shell confirmation.
+- Real `gpt-5.6-sol` large-file verification used a 30,000-line, 588,899-byte LF
+  file with one target at line 23,456. The model chose
+  `Grep -> Read -> Edit -> (Grep + Read)` without PowerShell. Byte-level
+  verification found 29,999 LF, zero CR, zero old matches, and one new match.
+- A second real run created a file below two missing directories through
+  `Write`, then chose `Glob -> Read`; the resulting file was exactly 23 bytes,
+  including the requested trailing LF.
+- Verified the learner's original external-directory scenario with
+  `--workspace D:\astra_test`: Astra printed the selected root, created
+  `hello_world.py` after confirmation, then read back the exact content
+  `print("Hello, world!")`.
+- Verified default unrestricted mode from the Q: working directory by reading
+  the same absolute D: path without `--workspace`. Repeated `--workspace` values
+  correctly reported a Q:+D: restricted allowlist.
+- Added a dedicated `PowerShellTool`; unlike `BashTool` on Windows, it invokes
+  `pwsh` directly rather than nesting through `cmd.exe /c`. It streams
+  stdout/stderr, reports exit code, kills/reaps the process tree on cancellation,
+  and always classifies as Execute so every call requires confirmation. General
+  shell access is explicitly not constrained by file-tool roots.
+- Real `gpt-5.6-sol` verification called the tool after approval and returned
+  `POWERSHELL_READY`, PowerShell `7.4.19`, and exit code 0.
+- OpenAI's Responses `apply_patch` remains a provider-native response/tool item,
+  not a same-named JSON function. The current .NET SDK path does not expose its
+  typed orchestration; that transport integration remains separate work.
+- Verification: 94/94 tests, zero-warning Release build, formatter clean, and
+  Native AOT publish successful. Astra PR #9 merged as `cffdf7a`; this parent
+  update pins the submodule to that merge commit.
 
 ### 2026-08-28 — Track D Day 7 done: compaction + learner-confirmed payoff
 
