@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides canonical guidance to Claude Code (claude.ai/code) and Codex when working with code in this repository.
 
 ## Core Directives (non-negotiable)
 
@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Where to Read State (do this first on a new session)
 
-On a fresh Claude session, **read `notes/progress.md` first**. Top of that file is a
+On a fresh Claude Code or Codex session, **read `notes/progress.md` first**. Top of that file is a
 snapshot of what physically exists right now on the GX10 (IP, sudo pattern, software
 versions, model files on disk, performance numbers, dependency pin gotchas), a
 **LEARNING STATE block** (where the user is across all tracks), and a list of open
@@ -33,7 +33,9 @@ threads / next steps the user wants to pick up.
 Repo layout:
 
 ```
-CLAUDE.md                                  ← this file: directives + hardware spec
+AGENTS.md                                  ← Codex bootstrap; delegates to CLAUDE.md
+CLAUDE.md                                  ← canonical directives + hardware spec
+.codex/config.toml                         ← Codex fallback, limits, and project MCP config
 notes/
   why.md                                   ← motivation reminder — what the model-side curriculum buys
   progress.md                              ← state snapshot + dated log (read first)
@@ -294,7 +296,7 @@ learning note.
 
 ## Notes and State Live in This Repo
 
-All persistent notes, decisions, learning logs, and configuration belong inside this repository. Do **not** write to `~/.claude/.../memory/`, `MEMORY.md`, or any out-of-repo store. If something is worth remembering across sessions, commit it to a file here (e.g. `notes/`, `decisions/`, topic subdirs). Treat the repo as the single source of truth.
+All persistent notes, decisions, learning logs, and configuration belong inside this repository. Do **not** write to `~/.claude/.../memory/`, `~/.codex/.../memory/`, `MEMORY.md`, or any out-of-repo store. If something is worth remembering across sessions, commit it to a file here (e.g. `notes/`, `decisions/`, topic subdirs). Treat the repo as the single source of truth.
 
 ## Web Search Tooling (do NOT use the built-in WebSearch tool)
 

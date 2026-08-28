@@ -1,0 +1,10 @@
+# Native fallback if the AGENTS.md bootstrap is absent.
+project_doc_fallback_filenames = ["CLAUDE.md"]
+project_doc_max_bytes = 65536
+
+# Set SEARCH_MCP_API_KEY in the environment and enable this server only after
+# the credential has been validated; never commit the credential.
+[mcp_servers."Search-MCP"]
+url = "https://api.microsoft.ai/v3/mcp"
+env_http_headers = { "x-apikey" = "SEARCH_MCP_API_KEY" }
+enabled = false

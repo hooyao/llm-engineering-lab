@@ -1,13 +1,13 @@
 # Progress — append-only log + current snapshot
 
-> **New Claude session: read this file first.** The snapshot block below tells you
+> **New Claude Code or Codex session: read this file first.** The snapshot block below tells you
 > what physically exists on the GX10 right now. The log below tells you how we got
 > here. The "Open threads" section at the bottom tells you what to ask the user
 > about / pick up next.
 
 ---
 
-## STATE SNAPSHOT (last updated 2026-06-17)
+## STATE SNAPSHOT (last updated 2026-08-17)
 
 ### Hardware
 
@@ -76,7 +76,10 @@ saturate the GPU. To stress-test, use `experiments/bench/bf16_peak.py`.
 
 ```
 .
-├── CLAUDE.md                                 ← core directives + hardware spec
+├── AGENTS.md                                 ← Codex bootstrap; delegates to CLAUDE.md
+├── CLAUDE.md                                 ← canonical directives + hardware spec
+├── .codex/
+│   └── config.toml                           ← Codex fallback, limits, and Search-MCP mapping
 ├── .gitignore / .gitattributes
 ├── .gitmodules
 ├── notes/
@@ -134,7 +137,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
 | **B** Pretrain+RLHF | same file | **B1 DONE (theory + working engine), as REVIEW/gap-fill.** Reverse-mode autodiff taught as 4 steps (forward builds graph / local derivative / chain rule / reverse-topo + accumulate) + the notation traps (`d` is the derivative operator not division; `de/da != e/a`; the two-equals-signs `dL/dd = f = 2.0` = rule-then-plug-in) + a 3rd op `tanh` (`do/dz = 1 - o^2`). `experiments/b01-micrograd/{micrograd.py (Value class + 4 demos, ALL PASS incl. a trained neuron loss 3.86->0.007), learning-notes.md (fact-based, mermaid graphs per step, activation-extended)}`. **B4 has a Segment-0 stub only** (`experiments/b04-attention/learning-notes.md` — the "attention is the only cross-token op" frame, not yet taught). | **B2 — makemore (scalar->tensor jump: embedding/softmax/cross-entropy).** OR resume B4 (attention) which is still the pulled-forward priority. Learner is doing Track B from the start as review; B1's engine is ready to be re-typed from memory (Karpathy "type don't paste") on the new machine. |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D6 done** (D1–D5 Linux-verified) — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` + `IUserConfirmation` + `DefaultPermissionEngine`, fail-closed. **D6: context assembly — three-layer prefix (a system / b session-context memoized / c per-turn attachments, timeout-bounded); byte-stable a+b prefix for prompt-cache; `Astra.Core/Context/*` + `AgentLoop` wiring; PR #7 open.** Notes: `agent/experiments/d0{1..6}-*`. **Astra D6 branch at `c45c7c3`; 58 tests.** | D7 — compaction (four tiers: microcompact + full-compact sub-agent) per `curriculum-agent.md`; OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. **NOTE: learner flagged (2026-07-02) that missing a systematic transformer foundation is causing recurring shape/architecture confusion — consider inserting a focused transformer block (B4 pulled forward) before/around here; see LOG.** |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D7 done** (D1–D5 Linux-verified) — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` + `IUserConfirmation` + `DefaultPermissionEngine`, fail-closed. D6: three-layer context assembly + byte-stable a+b prefix. **D7: explicit compaction result union; cache-aware allowlisted microcompact; LLM full compact with verbatim recent tail; atomic preflight before every model round-trip; local `gpt-5.6-sol` payoff confirmed by learner.** Notes: `agent/experiments/d0{1..7}-*`. **Astra PR #8 open at `b7b07bb`; 70 tests.** | **D8 — multi-agent coordinator:** two isolated workers, condensed summaries, single-threaded writes, and measured token multiple. OR the deferred D4 control-plane / D5 CLI confirmation UI + InputSchema validation. **Transformer foundation gap remains; see 2026-07-02 LOG.** |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -173,6 +176,76 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-08-28 — Track D Day 7 done: compaction + learner-confirmed payoff
+
+- Implemented D7 compaction in Astra on branch `codex/d07-compaction`, based on
+  D6 commit `c45c7c3`. The learner directly inspected and confirmed both payoff
+  paths, so D7 is complete. Astra PR #8 is open; the parent tracking update is
+  PR #1. D8 is next.
+- Added an explicit `CompactionResult` union (`NotNeeded` / `Applied` /
+  `Failed`), rough provider-neutral token estimation, cache-aware local
+  microcompact with an explicit tool allowlist, LLM full compact with a
+  verbatim recent tail, and atomic preflight integration before every model
+  round-trip.
+- Added `OpenAIResponses` provider support through
+  `Microsoft.Extensions.AI.IChatClient`. Verified the local bridge at
+  `http://localhost:8765/codex` with `gpt-5.6-sol`; model catalog reports a
+  1,050,000-token context window and an 892,000-token auto-compact limit.
+- Payoff artifact: `agent/refs/Astra/samples/CompactionDemo`. Deterministic run:
+  microcompact 12,090 -> 6,108 estimated tokens; full compact 6,169 -> 126.
+  Repeated real `gpt-5.6-sol` runs: 6,169 -> 326–362; every generated summary
+  and continuation retained `RETENTION-CODE-7429` exactly.
+- Verification: 70/70 tests, zero-warning solution build, formatter clean, and
+  Native AOT publish clean. Notes live in `agent/experiments/d07-compaction/`.
+
+### 2026-08-19 — Track C needs a retention-oriented calculus rebuild
+
+- The learner reported that even the small calculus prerequisite used in B1 was
+  never stable: it has repeatedly been learned, forgotten, relearned, and
+  forgotten again. Treat C1-C3 as a foundation rebuild rather than a quick
+  refresh or a set of topics to skim.
+- The learner explicitly asked to read the existing notes and use reading/video
+  scaffolding before attempting closed-book derivative questions. Future Track C
+  sessions should use short input segments followed by worked examples,
+  verification, and spaced retrieval, rather than starting with an unscaffolded
+  quiz.
+- No Track C day is complete yet. C1 remains the next day; its pacing and resource
+  sequence are being revised in conversation before implementation.
+
+### 2026-08-17 — Codex support added with one canonical instruction source
+
+- Replaced the stale duplicated root `AGENTS.md` content with a nine-line bootstrap
+  that requires Codex to read `CLAUDE.md` in full. `CLAUDE.md` remains canonical, so
+  Claude Code and Codex cannot drift into different project rules again.
+- Added root `.codex/config.toml`: native `CLAUDE.md` fallback, a 64 KiB project
+  instruction limit (the canonical file is 33,964 bytes and exceeds Codex's default
+  32 KiB limit), and an environment-backed `Search-MCP` mapping that never stores the
+  credential in Git. The server is disabled until a valid `SEARCH_MCP_API_KEY` is set;
+  the credential currently stored in the ignored `.mcp.json` returned
+  `auth_invalid_api_key` during verification.
+- Added the same bootstrap/fallback inside the Astra submodule, plus
+  `.codex/hooks.json`. The Codex `SessionEnd` hook reuses Astra's existing tracked
+  `.claude/hooks/save-progress.ps1`, preserving the same `progress.md` snapshot behavior
+  without duplicating hook logic.
+- Verified with `codex-cli 0.144.1 --strict-config`: both the root repository and the
+  Astra submodule followed `AGENTS.md`, read their complete canonical `CLAUDE.md`, and
+  returned the correct final rule from each file. Hook JSON parsing and MCP discovery
+  also passed. A temporary-directory hook invocation completed in 1.862 seconds,
+  below Codex's 3-second `SessionEnd` ceiling.
+
+### 2026-07-22 — B1 review: connected-neuron backprop example added
+
+- Reviewed the meaning of `a.grad = dL/da` and fan-out accumulation using
+  `L = a*b + a`: the direct path contributes `1`, the path through `a*b`
+  contributes `b=3`, so `a.grad=4` while `b.grad=2`.
+- Extended `experiments/b01-micrograd/learning-notes.md` with a fully worked network:
+  two hidden layers, two neurons per hidden layer, one scalar output, and squared-error
+  loss. It separates neuron vs `Value`, shows the complete forward pass, derives the
+  backward pass layer by layer, and makes the two-path accumulation into each first-layer
+  activation explicit. Four matching Mermaid diagrams reuse the B1 Step 1-4 visual
+  convention: forward values, local derivatives, global gradients, and parameter
+  gradients. B1 remains complete; B2 remains the next sequential Track B day.
 
 ### 2026-07-09 — Track B1 done (micrograd, review/gap-fill) + HANDOFF for "continue Track B" on a new machine
 
