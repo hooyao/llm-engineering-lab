@@ -1,5 +1,10 @@
 # D5 — Permission pipeline: design + implementation record
 
+> Post-D8 update (2026-08-31): permission now consumes immutable
+> `ToolDefinition` values. Classification and denial occur before keyed
+> transient `IToolExecutor` activation, so a denied call constructs no executor.
+> The permission ordering and decisions documented below are unchanged.
+
 Track D Day 5. Goal: a tool that can run `rm -rf` needs a gate before execution.
 Build the load-bearing layers (1/2/5) of Claude Code's 7-layer permission model,
 wired into the loop BEFORE `ExecuteAsync` so a denied side effect never happens.

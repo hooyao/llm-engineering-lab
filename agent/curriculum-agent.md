@@ -1,15 +1,17 @@
-# Track D — Agent Engineering (16 evenings, two phases)
+# Track D — Astra Product Engineering (20 evenings, two phases)
 
 > **Why are you doing this?** See `agent/why-agent.md`. Re-read when motivation
 > flags. **Where it lands:** `notes/career-transition-research.md` §2 ranks
 > "AI/LLM Agent Engineer" as the most reachable model-facing role for your
-> profile. Every day below is a sentence you can say in an interview, backed by
-> code in Astra.
+> profile. This file is the product-engineering curriculum for Astra, not a list
+> of everything that may appear in an agent interview. Interview-only breadth
+> lives in `agent/curriculum-agent-interview.md`.
 
-This is the **execution plan** for the agentic leg of the project. It mirrors
-the structure of `notes/curriculum-v2-execution.md` (Tracks A/B/C): one concept
-per day, each day produces a runnable artifact, single recommended resource per
-day, an end-of-track checkpoint.
+This is the **execution plan** for the independent Astra product. It mirrors the
+structure of `notes/curriculum-v2-execution.md` (Tracks A/B/C): one product
+problem per day, a runnable artifact, a measured payoff, and an end-of-track
+checkpoint. A curriculum slot is not permission to add a subsystem: every
+production change must first pass Astra's feature-admission gate.
 
 ## What this track assumes
 
@@ -18,25 +20,29 @@ day, an end-of-track checkpoint.
   agent-loop skeleton.
 - Agentic ML: **none assumed**. Every agent term is defined the first time it
   appears (see each day's **Term** block).
-- You've read `agent/README.md` (the two-halves framing + source-tiering rule).
+- You've read `agent/README.md` (the product-vs-interview boundary and
+  source-tiering rule).
 
-## The daily flow (three layers, one deliverable)
+## The daily flow (evidence before abstraction)
 
 ```
-1. TEACHING   read the chapter:   refs/claude-reviews-claude/architecture/NN-*.md
-2. SOURCE     check the how:       refs/claude-code-sourcemap/restored-src/src/*
-3. IMPLEMENT  write it in C#:      Astra/src/Astra.Core/...  (the deliverable)
+1. FAILURE    reproduce a real autonomous/coding-agent failure
+2. SOURCE     read Claude Code source, Manus engineering, or another primary source
+3. CONTRACT   state the invariant and why Astra owns it
+4. IMPLEMENT  add the smallest compatible contract
+5. PAYOFF     rerun the task and measure the improvement
 ```
 
-For **Phase D-II** (the frontier half), the source layer is silent — Claude Code
-has no RAG / RAGAS / semantic memory. There, swap step 2 for
-`agent/research/2026-agent-patterns.md`.
+Claude Code source is authoritative for what Claude Code does. Manus's official
+context-engineering write-up defines a useful general-agent boundary. Neither
+is a feature checklist. `agent/research/2026-agent-patterns.md` can suggest a
+hypothesis, but it cannot by itself justify an Astra subsystem.
 
 ## Conventions
 
-- **Each day produces a runnable artifact** in Astra (a class + a passing test,
-  or a working CLI behavior). Notes/analysis land in
-  `agent/experiments/dNN-<slug>/`.
+- **Each day produces a runnable artifact.** Product code lands in Astra only
+  after the failure and ownership case are demonstrated. Notes/analysis land
+  in `agent/experiments/dNN-<slug>/`.
 - **Re-implement, don't copy.** Astra's own CLAUDE.md says it: *"Learn from
   Claude Code, don't copy it."* The source is a reference for design decisions,
   not a paste buffer.
@@ -45,13 +51,18 @@ has no RAG / RAGAS / semantic memory. There, swap step 2 for
   quantifies VRAM. "Uses a lot of context" is not an answer.
 - **Commodity infra is off-the-shelf.** Vector DB, embeddings, tracing backend:
   use existing ones. The agentic logic on top is what you write.
+- **Interview demand is not product demand.** Intent taxonomies, generic
+  workflows, production RAG, and timed interview mocks belong to
+  `curriculum-agent-interview.md` unless a separate Astra failure proves a core
+  requirement.
 
 ## Track layout
 
 - **Phase D-I — Agent Core (D1–D8):** the *how*. Re-implement the Claude Code
   agent core in Astra. Source-backed.
-- **Phase D-II — The Frontier Half (D9–D16):** the half Claude Code lacks. RAG,
-  eval, memory, interop. Blog/paper-backed.
+- **Phase D-II — Autonomous Runtime Hardening (D9–D20):** move from a working
+  coding loop to a Manus-style general autonomous core, while using coding tasks
+  as the first benchmark. Product-evidence-backed.
 
 ---
 
@@ -88,7 +99,7 @@ agent's event protocol*.
 **Resource:** Anthropic, "Building Effective Agents" (T1) — the augmented-LLM
 section + the autonomous-loop section. https://www.anthropic.com/research/building-effective-agents
 
-## D2 — The tool contract: behavioral flags over inheritance
+## D2 — The tool contract: behavioral classification and lazy execution
 
 **Why:** A tool is *"a contract between deterministic systems and
 non-deterministic agents."* The design choice that matters: behavior is
@@ -98,38 +109,47 @@ non-deterministic agents."* The design choice that matters: behavior is
 
 - Read `architecture/02-tool-system.md` + source `Tool.ts` and a couple of
   `tools/*/` implementations (e.g. `GrepTool`, `FileEditTool`).
-- In Astra: define `ITool<TInput,TOutput>` with `IsReadOnly(input)`,
-  `IsConcurrencySafe(input)`, `IsDestructive(input)`, `InputSchema`, and
-  `CallAsync`. Implement two tools: one read-only (`echo`/`read`) and one write
-  (`write`). Note `IsReadOnly("ls")==true` but `IsReadOnly("rm -rf")==false` —
-  the point is it's a function of the *input*.
+- In Astra: separate immutable `ToolDefinition` metadata/classification from
+  invocation-time `IToolExecutor`. `ToolDefinition.Classify(input)` returns the
+  behavioral category (`Read`, `Write`, `Execute`, or fail-closed `Other`)
+  without constructing an executor. Implement a read tool and a write tool;
+  note that the Bash definition classifies `"ls"` as `Read` and `"rm -rf"` as
+  `Execute` from the input rather than the implementation type.
+- Advertise definitions to the model, then activate a keyed transient executor
+  only after lookup and permission. Unused and denied tools must not construct
+  executor instances.
 
-**Deliverable:** two registered tools, dispatched by the D1 loop; a test shows
-the read tool flagged read-only and the write tool not.
+**Deliverable:** two registered tool definitions and lazy executors dispatched
+by the D1 loop; tests prove input-dependent classification, zero activation for
+an unused/denied tool, and a fresh executor per admitted invocation.
 
-**Term:** *tool*, *behavioral flags*, *input schema*, *fail-closed defaults*.
+**Term:** *tool definition*, *tool executor*, *behavioral classification*,
+*input schema*, *fail-closed defaults*, *invocation-time activation*.
 
 **Resource:** Anthropic, "Writing tools for agents" (T1) — the five principles.
 https://www.anthropic.com/engineering/writing-tools-for-agents
 
-## D3 — Tool orchestration: concurrent reads, serial writes, partition-sort
+## D3 — Tool orchestration: concurrent reads, serial barriers
 
-**Why:** Within one turn the model may request several tools. Reads can run in
-parallel; writes must not race. And tool ordering must stay cache-stable.
+**Why:** Within one turn the model may request several tools. Independent reads
+can overlap; writes and execution effects are ordering barriers. Results still
+have to return to the model in its original call order.
 
 **Do:**
 
 - Read `architecture/02-tool-system.md` (orchestration section).
-- In Astra: partition the turn's tool calls — run `IsConcurrencySafe` tools in
-  parallel, run the rest serially in a write-exclusive batch. Implement the
-  assembly pipeline (built-in tools as a contiguous prefix, MCP tools as suffix)
-  for prompt-cache stability.
+- In Astra: use the D2 behavioral classification to coalesce adjacent `Read`
+  calls into bounded concurrent batches. Treat `Write`, `Execute`, and `Other`
+  as individual serial barriers. Preserve emission order when appending results
+  even when reads finish out of order.
+- Do not sort calls across a barrier. Capability-catalog ordering and deferred
+  loading belong to D12/D18, when a real large catalog exists.
 
 **Deliverable:** a turn with 3 read calls + 1 write executes reads concurrently
 and the write alone; a test asserts ordering and that reads overlapped.
 
-**Term:** *tool orchestration*, *write-exclusive batch*, *partition-sort for
-prompt-cache stability*, *concurrency safety*.
+**Term:** *tool orchestration*, *stable partition*, *serial barrier*,
+*concurrency safety*, *program order*.
 
 **Resource:** the source — how `query.ts` groups tool calls.
 
@@ -233,13 +253,15 @@ hurts — both camps' views (Anthropic pro-for-research, Cognition anti-for-codi
 - In Astra: spawn a worker with a **clean, isolated context window** (it cannot
   see the coordinator's conversation), have it return a condensed
   1,000–2,000-token summary via the XML `task-notification` protocol. Keep
-  **writes single-threaded** (the cross-camp consensus).
+  a global single-writer lane, but do not expose write-capable workers until
+  D9's strict file-version and atomic MultiEdit invariants pass.
 - Read both `research/2026-agent-patterns.md` Part C and the two Cognition posts.
   Write 5 lines on when you'd reach for multi-agent vs a single agent.
 
 **Deliverable:** coordinator dispatches 2 isolated workers in parallel, collects
-their summaries, synthesizes. Log the token multiple vs a single agent (expect
-the ~15× ballpark).
+their summaries, synthesizes, and logs the token and wall-time multiple against
+the same single-agent task. Treat the measured result as the answer; do not use
+the published ~15× research-system token multiple as an expectation.
 
 **Term:** *orchestrator-worker*, *context isolation*, *worker summary*,
 *single-threaded writes*, *token multiple*.
@@ -257,240 +279,407 @@ portfolio piece** — a from-scratch agent core in C#.
 
 ---
 
-# Phase D-II — The Frontier Half (8 evenings)
+# Phase D-II — Autonomous Runtime Hardening (12 evenings)
 
-**Goal at the end:** Astra does what Claude Code deliberately doesn't — agentic
-RAG, agent evaluation, long-term memory, standardized tracing, MCP/A2A interop.
-The source layer is silent here; `research/2026-agent-patterns.md` is your guide.
+**Goal at the end:** Astra is a Manus-style general autonomous-agent core whose
+coding specialization can be compared honestly with Claude Code and Codex. It
+owns execution, environment, context, recoverable task state, safety, recovery,
+measurement, and capability integration. It does not become a generic workflow
+or RAG platform.
 
-## D9 — Context rot + just-in-time retrieval + the memory tool
+## D9 — Strict file versions + atomic MultiEdit
 
-**Why:** This is the hinge between the two halves. Claude Code uses `grep`
-instead of RAG *on purpose* — because of context rot and the just-in-time
-principle. You'll build the file-based memory primitive that makes it work, and
-understand *why* before you build RAG in D10.
-
-**Do:**
-
-- Read research Part A (A2 context rot, A3 just-in-time, A4 the three primitives).
-- In Astra: implement a **file-based memory tool** (`memory_*`-style): the agent
-  stores lightweight identifiers + learned facts to disk and pulls them back on
-  demand. This is the only context primitive that survives a new session — it
-  complements D7's compaction (which loses verbatim detail).
-
-**Deliverable:** an agent that writes a fact to memory in session 1 and recalls
-it in session 2 (empty window). Show that compaction alone could not do this.
-
-**Term:** *context rot*, *attention budget*, *just-in-time retrieval*, *external
-memory tool*, *episodic vs semantic vs procedural memory* (define all three).
-
-**Resource:** research Part A. Note the model-side analogue: this is the same
-"read state first" discipline `notes/progress.md` uses for *this* repo.
-
-## D10 — Agentic RAG I: retrieval-as-tool + query rewriting/decomposition
-
-**Why:** RAG, done right in 2026, is *retrieval wrapped in a decision loop* — the
-agent decides when to retrieve, rewrites the query, and reasons over results.
-The vector DB underneath is commodity; the loop is what you write.
+**Why:** D8 can schedule a write worker, but exposing it is unsafe while a worker
+can act on stale file content or while two edits from one model response can
+partially apply. This is a demonstrated coding-agent correctness failure, not a
+speculative abstraction.
 
 **Do:**
 
-- Read research Part D (D1, D2). Skim the Agentic RAG survey (arXiv:2501.09136).
-- In Astra: expose **retrieval as a tool** (back it with any off-the-shelf vector
-  store + embeddings — do NOT build those). Implement a **retrieve-then-reason
-  loop** with **query rewriting/decomposition**: the agent reformulates the user
-  question into one or more retrieval queries before searching.
+- Have bounded reads return a stable file-version token for the exact bytes the
+  model observed.
+- Require an expected version for edits to an existing file. A mismatch returns
+  a conflict and requires a fresh read; do not auto-rebase model edits.
+- Normalize all edits to one file from the same model response into one ordered,
+  validated transaction. Apply all or none through an atomic replace.
+- Cover delete/create/replace races, BOM and line-ending preservation, duplicate
+  matches, cancellation, and permission ordering.
+- Enable write-capable workers only after the stale-write and atomicity tests
+  pass.
 
-**Deliverable:** a multi-hop question answered by an agent that issued ≥2
-rewritten retrieval queries. Log each query and why it was issued.
+**Deliverable:** reproduce two edits derived from the same old `hello world`
+bytes, prove the second stale edit cannot silently apply, and prove a multi-edit
+batch leaves the original file unchanged if any member fails.
 
-**Term:** *agentic RAG*, *retrieval-as-tool*, *query rewriting*, *query
-decomposition*, *multi-hop*.
+**Term:** *optimistic concurrency*, *version token*, *stale read*, *atomic
+transaction*, *conflict*, *no automatic rebase*.
 
-**Resource:** research Part D + Self-RAG (arXiv:2310.11511).
+**Resource:** the existing D8 stale-write teaching note, Claude Code file-edit
+source, and the target OS atomic-replace contract.
 
-## D11 — Agentic RAG II: CRAG — retrieval grading + corrective routing
+## D10 — Durable session log + crash-safe resume
 
-**Why:** Naive RAG generates from whatever was retrieved, including garbage.
-**Corrective RAG** grades retrieved docs and takes corrective action (refine the
-query, or fall back to web search) *before* generating. This is the
-single-highest-value RAG upgrade and adds one classification layer, not a
-re-architecture.
-
-**Do:**
-
-- Read research Part D (D2 CRAG) + the CRAG paper (arXiv:2401.15884).
-- In Astra: add a **retrieval evaluator** that scores each retrieved chunk;
-  below-threshold results trigger **corrective routing** — query refinement and
-  a web-search fallback — before the generation step.
-
-**Deliverable:** a query where internal retrieval scores low and the agent falls
-back to web search, then answers. Log the grade and the route taken.
-
-**Term:** *corrective RAG (CRAG)*, *retrieval evaluator*, *relevance threshold*,
-*corrective routing*, *web-search fallback*.
-
-**Resource:** research Part D + CRAG paper.
-
-## D12 — RAG evaluation: RAGAS metrics
-
-**Why:** You can't claim "my RAG is good" without numbers. RAGAS gives the
-standard ones. This is the eval discipline a hiring manager will probe.
+**Why:** An autonomous task can outlive one process or UI connection. The
+conversation list in memory is not durable ownership of actions, observations,
+artifacts, compaction references, and task status.
 
 **Do:**
 
-- Read research Part D (D3 — the metric definitions).
-- In Astra (or a thin Python harness — eval tooling is commodity, your *agentic
-  logic* stays in C#): wrap your D10/D11 loop and compute **faithfulness**
-  (supported claims / total claims), **context precision**, **context recall**,
-  **response relevancy** on a small eval set.
+- Define an append-only, versioned session record for accepted user inputs,
+  model outputs, tool calls/results, compaction replacements, task state, and
+  artifact references.
+- Rebuild a session deterministically without replaying completed side effects.
+- Distinguish durable truth from UI events and from provider-specific payloads.
+- Crash at controlled points: before a tool starts, after the side effect but
+  before result persistence, and after persistence.
+- Keep the persistence implementation replaceable; Astra owns the session
+  semantics, not a database engine.
 
-**Deliverable:** a RAGAS scorecard for your D10 vs D11 agent (CRAG should improve
-faithfulness). 5-line interpretation.
+**Deliverable:** terminate a real multi-step task mid-run, restart Astra, resume
+from the durable log, and prove a completed side effect is not duplicated.
 
-**Term:** *faithfulness*, *context precision*, *context recall*, *response
-relevancy*, *ground-truth reference*.
+**Term:** *event log*, *resume*, *replay*, *write-ahead state*, *artifact
+ownership*, *side-effect boundary*.
 
-**Resource:** RAGAS docs (research Part D source ledger).
+**Resource:** Manus's file-system-as-context principle, Anthropic's long-running
+agent harness guidance, and the existing Astra event protocol.
 
-## D13 — Agent evaluation: end-state grading + LLM-as-judge
+## D11 — Execution environment + sandbox lifecycle
 
-**Why:** RAG eval is one slice; whole-agent eval is the bigger skill. Grade the
-*outcome*, not the trajectory — with the caveats.
-
-**Do:**
-
-- Read research Part B (B1 end-state, B2 escape hatch + calibration, B3 the two
-  suites).
-- In Astra: build an **LLM-as-judge** — a single call returning a 0.0–1.0 score +
-  pass/fail across a rubric, with an **"Unknown" escape hatch**. Split your evals
-  into a **capability suite** (low pass rate, a hill to climb) and a **regression
-  suite** (near-100%). For your capstone agent, *add* a lightweight trajectory
-  check (the B1 2-1 nuance: numeric scores alone are unstable).
-
-**Deliverable:** a judge that scores agent runs; a capability set and a regression
-set with the expected opposite pass-rate profiles.
-
-**Term:** *end-state evaluation*, *LLM-as-judge*, *rubric*, *calibration /
-Cohen's kappa*, *capability vs regression eval*.
-
-**Resource:** Anthropic "Demystifying evals for AI agents" (T1, research Part B).
-
-## D14 — Observability: OpenTelemetry GenAI tracing
-
-**Why:** In production you debug agents from traces, not print statements. The
-OTel GenAI semantic conventions are the emerging standard — but still unstable,
-so you'll build an adapter, not hard-code it.
+**Why:** A Manus-style agent acts in an environment. Directly opening local
+files and processes from tool classes prevents isolated execution, remote
+workers, recoverable artifacts, and one enforceable lifecycle boundary.
 
 **Do:**
 
-- Read research Part B (B4 the four span ops, B5 the instability warning).
-- In Astra: instrument the loop with spans for the four operations —
-  `create_agent`, `invoke_agent`, `invoke_workflow`, `execute_tool` — with the
-  required attributes (`gen_ai.operation.name`, `gen_ai.provider.name`). Export
-  to **any off-the-shelf backend** (Jaeger). Wrap the attribute names behind a
-  thin adapter (they will break — semconv is in Development).
+- Define the smallest task-scoped execution-environment contract for paths,
+  processes, artifacts, environment identity, and cancellation/disposal.
+- Keep file, shell, browser/computer, and future remote capabilities behind the
+  environment boundary without forcing them into one inheritance hierarchy.
+- Provide a local implementation and a deterministic test implementation.
+- Integrate an existing OS/container sandbox rather than implementing an
+  isolation kernel.
+- Prove that task cancellation tears down all environment-owned processes and
+  that one worker cannot access another worker's private environment state.
 
-**Deliverable:** a Jaeger trace of a multi-tool agent run showing the four span
-types nested correctly.
+**Deliverable:** run the same task in the local and isolated implementations,
+collect an artifact, cancel midway, and verify complete environment cleanup.
 
-**Term:** *span*, *GenAI semantic conventions*, *span kind (CLIENT/INTERNAL)*,
-*trace*, *cost/latency/token attributes*.
+**Term:** *execution environment*, *sandbox lifecycle*, *artifact*, *task
+isolation*, *capability boundary*.
 
-**Resource:** OTel GenAI agent-spans spec (T2, research Part B). Mind the date.
+**Resource:** Manus's virtual-machine environment model and Claude Code/Codex
+sandbox behavior, reconciled against Astra's existing file/process lifecycle.
 
-## D15 — Interop: MCP client + deferred tool loading + A2A
+## D12 — Stable action space + state-aware tool policy
 
-**Why:** MCP (agent↔tool) and A2A (agent↔agent) are the 2026 interop stack. And
-the "too many tools" problem is real — loading every tool definition upfront can
-cost hundreds of thousands of tokens.
-
-**Do:**
-
-- Read research Part E (E1 tool design, E2 code-execution-with-MCP, E3 MCP+A2A).
-- In Astra: implement an **MCP client** (stdio transport) so external MCP tools
-  appear identical to built-in tools. Add **deferred / dynamic tool loading**
-  (Claude Code's `ToolSearch` pattern, or the file-tree + progressive-disclosure
-  approach) so tool definitions load on demand instead of all upfront.
-- Read the A2A spec enough to write 5 lines: how AgentCard/Task/Message would let
-  Astra talk to another agent, and why AgentCards being self-reported/unsigned is
-  a real weakness.
-
-**Deliverable:** Astra connects to a real MCP server (e.g. a filesystem MCP) and
-calls its tools; deferred loading keeps the upfront tool-definition token cost
-flat as tool count grows. Log the token savings.
-
-**Term:** *MCP*, *A2A*, *AgentCard*, *deferred tool loading*, *progressive
-disclosure*, *code execution with MCP*.
-
-**Resource:** Anthropic "Code execution with MCP" + MCP/A2A specs (research Part E).
-
-## D16 — Capstone: a research agent that uses everything
-
-**Why:** Integration is the test. Build one agent that exercises the whole stack
-and *evaluates itself*.
+**Why:** Dynamically adding and removing tool definitions damages prefix-cache
+stability and leaves prior observations referring to missing actions. A large
+unchanged action space, however, increases wrong-tool selection. Manus resolves
+this with state-aware action constraints rather than arbitrary schema churn.
 
 **Do:**
 
-- In Astra, build a **research agent** that: (a) **orchestrates workers** (D8) for
-  breadth-first sub-questions; (b) each worker does **agentic RAG with CRAG**
-  (D10–D11) over a corpus; (c) uses the **memory tool** (D9) for cross-session
-  state; (d) is fully **traced** via OTel (D14); (e) is **scored by your judge**
-  (D13) with a capability + regression split.
-- Run it on a real multi-part question. Produce the trace, the judge score, and a
-  token-cost budget.
+- Keep the advertised capability catalog deterministically ordered and stable
+  across an agent run.
+- Add provider-neutral `Auto`, `Required`, and `SpecifiedSubset` action policies.
+- Use provider constrained decoding where available; retain a fail-closed
+  dispatch/permission check when it is not.
+- Make task state select an allowed action subset without granting new
+  authority or mutating historical definitions.
+- Measure prefix stability, invalid/wrong action rate, and tokens when the
+  catalog grows.
 
-**Deliverable:** end-to-end run with: the answer, the Jaeger trace, the RAGAS +
-judge scorecard, and a one-paragraph token-cost analysis (the ~15× multi-agent
-multiple should be visible and *justified by the task value* — the C2 lesson).
+**Deliverable:** drive one task through at least three action states, prove the
+serialized prefix stays stable, and show an invalid action is rejected even
+when the provider cannot enforce the subset.
 
-**Term:** integration of all prior terms; *the agent is the product, the eval is
-the proof*.
+**Term:** *action space*, *constrained decoding*, *tool-choice policy*, *state
+machine*, *stable capability catalog*.
 
-**Resource:** everything. This is the portfolio centerpiece.
+**Resource:** Manus "Mask, Don't Remove," provider tool-choice contracts, and
+Claude Code deferred-tool behavior.
+
+## D13 — Long-horizon plan state + file-backed working memory
+
+**Why:** A long task drifts as its original objective moves away from the recent
+context. Manus externalizes task state into files and repeatedly brings the
+current plan back into recent attention. This is working state for the active
+task, not a generic semantic-memory product.
+
+**Do:**
+
+- Define explicit goal, step, status, blocker, and artifact references for one
+  active task.
+- Persist the plan through the D10 session mechanism and expose controlled plan
+  updates as an agent capability.
+- Reinsert a bounded current-plan view near the tail without rewriting old
+  action/observation history.
+- Keep large observations recoverable by durable path/URL/artifact references,
+  and distinguish restorable data from irrecoverable evidence.
+- Compare long-horizon completion with and without plan recitation under the
+  same model and tool budget.
+
+**Deliverable:** a task requiring dozens of tool calls resumes after a restart,
+retains its done criteria, and shows a measured reduction in goal drift or
+repeated work.
+
+**Term:** *working memory*, *plan recitation*, *goal drift*, *recoverable
+reference*, *task state*.
+
+**Resource:** Manus "Use the File System as Context" and "Manipulate Attention
+Through Recitation," plus Astra's D7 compaction invariants.
+
+## D14 — Failure evidence + retry/idempotency semantics
+
+**Why:** Failed actions, stack traces, and environment errors are observations
+the model can use to recover. Hiding them can make the agent repeat the same
+mistake. Blind retries are also unsafe once a tool may have produced a side
+effect.
+
+**Do:**
+
+- Preserve bounded failed actions and observations in the agent history and
+  durable log.
+- Classify provider failures, transport failures, policy denials, tool failures,
+  ambiguous side-effect outcomes, and terminal task failures.
+- Retry only where the operation and persistence point make it safe; add
+  backoff, jitter, attempt/time/token budgets, and cancellation.
+- Define idempotency semantics for side-effecting tools and resume recovery for
+  the "effect happened, result was not persisted" case.
+- Wire the deferred reactive-compaction retry through the same bounded policy.
+
+**Deliverable:** inject deterministic failures before, during, and after a tool
+side effect; prove Astra either recovers once or stops with an explicit
+ambiguous outcome, never silently duplicates the effect.
+
+**Term:** *failure evidence*, *retryable*, *idempotency key*, *ambiguous
+outcome*, *backoff with jitter*, *retry budget*.
+
+**Resource:** Manus "Keep the Wrong Stuff In," .NET resilience primitives, and
+the D4 process-tree cancellation contract.
+
+## D15 — Trust provenance + agent security boundaries
+
+**Why:** System instructions, user requests, retrieved pages, repository files,
+and tool output do not carry equal authority. A general agent must preserve
+where content came from so untrusted observations cannot grant permission or
+silently rewrite policy.
+
+**Do:**
+
+- Attach origin and trust metadata to system, user, attachment, tool, worker,
+  and external-content observations without destabilizing provider prefixes.
+- Keep authorization decisions outside model-generated text and enforce them at
+  the capability boundary.
+- Test direct and indirect prompt injection, tool-output injection, worker-report
+  injection, path escape, secret leakage into logs, and malicious project
+  instructions.
+- Integrate an existing sandbox and host policy for OS enforcement; do not claim
+  prompt filtering is a sandbox.
+- Keep application PII classification, tenant RBAC/ABAC, compliance, and content
+  moderation outside Astra Core while preserving the hooks they require.
+
+**Deliverable:** a red-team suite where untrusted file/web/tool content asks for
+new authority and Astra consistently denies the escalation while still making
+the content available as evidence.
+
+**Term:** *provenance*, *trust boundary*, *prompt injection*, *authority*,
+*data exfiltration*, *defense in depth*.
+
+**Resource:** Claude Code's permission/workspace-trust source, Codex sandbox
+behavior, and current prompt-injection threat guidance.
+
+## D16 — OpenTelemetry tracing + operator-visible state
+
+**Why:** A long-running autonomous task cannot be debugged from final text or
+console output. Operators need one trace that connects model calls, tool
+attempts, workers, environment lifecycle, compaction, retries, and artifacts.
+
+**Do:**
+
+- Add an adapter over the evolving OpenTelemetry GenAI semantic conventions.
+- Correlate session/task/worker IDs and emit spans for model invocation, tool
+  execution, compaction, environment operations, and worker coordination.
+- Record latency, token/cache counts, retry attempts, outcomes, and bounded
+  error metadata without leaking prompts, secrets, or private worker history.
+- Export to an off-the-shelf collector/backend and define a stable internal
+  telemetry contract independent of that backend.
+
+**Deliverable:** diagnose an injected intermittent worker/tool failure from one
+trace and identify its exact retry, environment, and completion path.
+
+**Term:** *trace*, *span*, *correlation*, *semantic convention*, *redaction*,
+*cardinality*.
+
+**Resource:** OpenTelemetry GenAI semantic conventions and Astra's typed event
+and completion protocols.
+
+## D17 — Agent evaluation harness
+
+**Why:** "Surpass Claude Code/Codex" is meaningless without repeatable tasks and
+outcome measures. Evaluation is a product measurement surface, not model logic
+inside `AgentLoop`.
+
+**Do:**
+
+- Build an eval harness outside the runtime Core that can launch an agent,
+  provision an environment, capture the final state and trace, and grade it.
+- Separate capability suites from near-100% regression suites.
+- Prefer deterministic end-state checks: tests, file content, repository state,
+  artifacts, and explicit task invariants. Add bounded trajectory checks only
+  where the outcome cannot expose the failure.
+- Support an LLM judge with `Unknown` and calibration against human labels, but
+  never make it the only grader.
+- Record success, latency, input/output/cached tokens, tool calls, retries, and
+  cost under a fixed model/environment configuration.
+
+**Deliverable:** one capability suite and one regression suite that compare a
+baseline loop with current Astra and catch a deliberately introduced
+regression.
+
+**Term:** *end-state evaluation*, *capability suite*, *regression suite*,
+*trajectory check*, *judge calibration*, *reproducibility*.
+
+**Resource:** Anthropic "Demystifying evals for AI agents" and the coding-agent
+benchmark methodology selected for the task set.
+
+## D18 — MCP capability transport
+
+**Why:** A general core cannot compile every future capability into the runtime.
+MCP is the first concrete external capability transport, but remote tools still
+have to obey Astra's action-space, permission, cancellation, telemetry, and
+lifecycle contracts.
+
+**Do:**
+
+- Implement one real MCP transport and normalize remote tools into Astra's
+  definition/executor and permission contracts.
+- Reconcile server discovery and reconnects with D12's stable action-space and
+  prefix-cache requirements; do not silently mutate the catalog mid-action.
+- Bound schemas, results, connection failures, and server-controlled names and
+  descriptions as untrusted external input.
+- Measure startup/tool-definition tokens and invocation latency with a large
+  capability catalog.
+
+**Deliverable:** connect a real MCP server and prove its tools pass the same
+permission, cancellation, trust, result-bounding, and telemetry tests as a
+built-in tool.
+
+**Term:** *MCP*, *transport lifecycle*, *remote capability*, *capability
+catalog*, *extension boundary*.
+
+**Resource:** MCP specification, Claude Code/Codex MCP behavior, and Manus's
+stable-action-space findings.
+
+## D19 — Skills, hooks, and progressive capability disclosure
+
+**Why:** Instructions and lifecycle customization are different from executable
+remote tools. They need explicit formats and ownership so capability discovery
+does not become arbitrary in-process plugin execution or invisible mutation.
+
+**Do:**
+
+- Load skills as bounded instruction/resource packages through progressive
+  disclosure; advertise metadata before loading full content.
+- Add pre/post lifecycle hooks through a language-neutral, bounded protocol.
+- Ensure skills and hooks cannot grant permission, mutate durable history
+  invisibly, or escape task/environment ownership.
+- Preserve deterministic ordering, prefix stability, cancellation, and Native
+  AOT.
+- Keep A2A and arbitrary dynamic assembly/plugin loading outside the product
+  until a concrete task demonstrates a requirement that workers, MCP, skills,
+  and hooks cannot meet.
+
+**Deliverable:** load one skill on demand and execute one lifecycle hook while
+proving both remain visible in task state and cannot bypass permission or trust
+boundaries.
+
+**Term:** *skill*, *hook*, *progressive disclosure*, *lifecycle interception*,
+*instruction package*.
+
+**Resource:** Claude Code/Codex skill and hook behavior, reconciled with Astra's
+feature-admission and security rules.
+
+## D20 — Capstone: general autonomy + coding benchmark
+
+**Why:** Integration is the test, and the product claim has two parts: a general
+autonomous core and a coding specialization competitive with Claude Code and
+Codex.
+
+**Do:**
+
+- Select at least one long-horizon general task that uses an isolated
+  environment, files/artifacts, planning, recovery, and resume.
+- Select at least one repository coding task with deterministic tests and a
+  stale-write or injected-failure path.
+- Run fixed-model/fixed-environment Astra baselines. Where practical, run the
+  same coding task through Claude Code and Codex, documenting capability and
+  environment differences instead of pretending the runs are identical.
+- Grade end state, recovery, latency, tokens/cache, tool calls, retries, safety,
+  and operator-visible trace quality.
+
+**Deliverable:** a reproducible benchmark report with artifacts the learner runs
+and inspects personally. Claims are limited to the measured tasks; no global
+"best agent" conclusion.
+
+**Term:** *benchmark validity*, *controlled comparison*, *task success*,
+*recovery rate*, *cost/latency frontier*.
+
+**Resource:** all product-track evidence. This is the Astra portfolio
+centerpiece.
 
 ### Phase D-II checkpoint
 
-Astra now does what Claude Code doesn't: agentic RAG with corrective grading,
-RAGAS + LLM-judge evaluation, cross-session memory, OTel tracing, MCP interop.
-Write a 1-page recap in `agent/experiments/track-d2-recap.md`, then update
-`notes/career-transition-research.md` Phase 0 — you've completed portfolio item 3
-("agent + evals"), and Astra is now a public, inspectable from-scratch agent
-framework.
+Astra now has the runtime boundaries required by a long-running general agent:
+strict writes, durable resume, task-scoped environments, controlled action
+space, file-backed working state, explicit recovery semantics, trust
+provenance, traces, evals, and bounded capability integrations. Its coding
+specialization has a reproducible comparison suite rather than a feature-count
+claim. Write a 1-page recap in `agent/experiments/track-d2-recap.md`.
 
 ---
 
 # Track D checkpoint (both phases)
 
-You can read any production agent codebase and re-implement any piece. You have a
-hand-written agent framework in C# that reaches Claude Code's core *and* the
-frontier half it omits. You can quantify the token cost of any agent design, know
-when *not* to use RAG or multi-agent, and prove an agent works with numbers, not
-vibes.
+You can read a production autonomous-agent runtime and reason about its loop,
+action space, environment, context, task state, side effects, recovery, trust,
+measurement, and extension boundaries. You have a hand-written Manus-style core
+in C# and a coding specialization measured against concrete Claude Code/Codex
+tasks. You can explain not only what Astra implements, but why adjacent features
+were deliberately excluded.
 
 This maps directly to the career target: **Microsoft Applied AI Engineer II**
 (agentic / RAG / evals, "AKS background directly relevant"), Dublin "Agent Cloud"
 Senior AI SWE, Copilot Tuning, or external OpenAI/Google FDE roles. Astra is the
 "equivalent experience" those JDs accept in place of a degree.
 
-Write the final 1-page recap in `agent/experiments/track-d-recap.md` and revisit
+Write the final 1-page recap in `agent/experiments/track-d-recap.md`, continue
+the separate `agent/curriculum-agent-interview.md` labs as needed, and revisit
 `agent/why-agent.md`'s personal-notes section.
 
 ---
 
 # What Track D does NOT cover
 
-Deliberately out of scope (mirrors the model side's exclusions):
+Deliberately outside the Astra product track:
 
-- **Vector DB / embedding internals.** Commodity. Use off-the-shelf; the agentic
-  logic on top is the lesson.
-- **Tracing backend internals.** Use Jaeger/an OTel collector; you build the
-  instrumentation, not the storage engine.
-- **The Claude Code product shell.** Ink/React TUI (EP14), Bridge/remote-control
-  (EP13), telemetry/infra plumbing (EP16/EP17) — these are product packaging, not
-  agentic core. Read the chapters if curious, but they aren't learning days.
-- **Distributed multi-box agent serving.** A scaling/ops problem, separate from
-  learning the agentic patterns.
+- **Model training/fine-tuning.** Tracks A/B own model adaptation; Astra consumes
+  model endpoints.
+- **Generic workflow execution.** Use an existing workflow/durable-task engine
+  and invoke Astra as a step. Astra owns autonomous task execution, not business
+  DAGs.
+- **Application RAG infrastructure.** Vector DBs, embeddings, document parsing,
+  chunking, reranking, and application retrieval policy belong in application
+  labs and integrations.
+- **Application intent taxonomies and routers.** These are product policy, not a
+  universal runtime contract.
+- **Multi-tenant SaaS control plane.** Auth, billing, tenancy policy, compliance,
+  and serving-fleet operations belong to the host product.
+- **Tracing/eval storage backends.** Use off-the-shelf systems; Astra owns emitted
+  semantics and the harness boundary.
+- **Interview feature parity.** `curriculum-agent-interview.md` covers the topic
+  without changing Astra.
 
 ---
 
@@ -503,8 +692,8 @@ One working approach for all four tracks:
 |---|---|---|---|---|
 | Track A (model) | Track D (agent) | Track C (math) | Track B (pretrain) | Track D (agent) |
 
-Track D Phase D-I (core) is self-contained C# work — good for evenings when you
-want to build, not read papers. Phase D-II pairs naturally with Track A's eval/
-serving days (A9/A10) since both touch evaluation and inference. Do Phase D-I
-before D-II; within each phase, days are mostly sequential (D10→D11→D12 build on
-each other; D13–D15 are more independent).
+Track D Phase D-I is the working core. Phase D-II hardens it into a general
+autonomous runtime; most days are sequential because file transactions, durable
+state, environments, recovery, and measurement establish each other's
+correctness boundaries. The separate interview track can run between product
+days without changing Astra's backlog.

@@ -6,8 +6,9 @@
 >
 > 1. **Model side** — `notes/curriculum-v2-execution.md` (Tracks A/B/C:
 >    fine-tuning, pretrain+RLHF, math).
-> 2. **Agentic side** — this folder (`agent/`, Track D: building a Claude
->    Code-style agent core by hand).
+> 2. **Agentic side** — this folder (`agent/`, Track D: building a Manus-style
+>    autonomous core whose coding specialization is benchmarked against Claude
+>    Code and Codex).
 > 3. **Career transition** — `notes/career-transition-research.md` (where the
 >    skills land: target roles, locations, leveling, visa, comp).
 >
@@ -22,41 +23,43 @@
 
 ## What this path builds
 
-A working, hand-written agent harness in **Astra** (your C# framework) that
-reaches parity with — and is meant to eventually exceed — the Claude Code agent
-core, plus the half Claude Code deliberately doesn't have (RAG, agent eval,
-long-term memory, interop). At the end you can read any production agent
-codebase and re-implement any piece of it from first principles.
+A working, hand-written autonomous-agent runtime in **Astra** plus a separate
+set of applied-agent interview labs. These are deliberately different outputs:
 
-The deliverable is not "I used LangGraph." It's **"I wrote the agent loop, the
-tool orchestrator, the compaction tiers, the permission pipeline, an agentic-RAG
-retrieval loop, and an eval harness myself, and here's the eval score and the
-token-cost budget."** That is the portfolio artifact the career research calls
-for (Phase 0, item 3).
+1. **Astra is an independent product.** Its north star is a Manus-style general
+   autonomous agent core. Coding is its first specialization and the benchmark
+   used to compare it with Claude Code and Codex. Production code enters Astra
+   only when a real task, regression, or benchmark justifies the runtime
+   contract.
+2. **The learning repo owns interview breadth.** Intent routing, ReAct
+   comparisons, generic workflow orchestration, production RAG, and timed
+   interview exercises may be worth learning without becoming Astra features.
+   Those live in `curriculum-agent-interview.md` and use Astra only through its
+   public surface.
 
-## The two halves (read this before starting)
+The portfolio claim is therefore precise: **"I built and measured an autonomous
+agent runtime, then used it and off-the-shelf application infrastructure to
+solve and evaluate realistic agent problems."** It is not "I put every adjacent
+AI technique into one framework."
 
-This path rests on two facts about its source material.
+## Product north star and reference boundaries
 
-**Half 1 — the agent core (the *how*).** Claude Code's restored source
-(`refs/claude-code-sourcemap/restored-src/src/`) is the source of truth for the
-while-loop, tool dispatch, context assembly, compaction, permissions, and
-multi-agent coordination. Reading it teaches you *how* a production agent core is
-built. This half is well-covered by the source — study it, then re-implement in
-Astra.
+**General-agent north star — Manus.** Manus's official context-engineering
+write-up describes the product boundary Astra is aiming at: an iterative
+action/environment/observation loop, a stable action space, sandbox execution,
+file-backed recoverable context, long-horizon task focus, and error recovery.
+See [Context Engineering for AI Agents: Lessons from Building Manus](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus).
 
-**Half 2 — the frontier (the *why-not*, and everything Claude Code lacks).**
-Claude Code is a single-agent **coding** harness — sample size 1, optimized for
-one vertical. It deliberately has **no RAG** (it uses `grep`+`read` instead),
-deliberately **downplays multi-agent** (the Cognition "don't build multi-agents"
-camp), and has no RAGAS-style eval or long-term semantic memory. The things you
-named — RAG, agent eval, memory, interop — are **absent from the source**. They
-exist only in primary engineering blogs and papers. This half is covered by
-`research/2026-agent-patterns.md`.
+**Coding specialization — Claude Code and Codex.** Claude Code's restored source
+is the implementation reference for the coding-agent loop, tools, context,
+permissions, compaction, and coordination. Claude Code and Codex are the
+comparison targets for coding-task correctness, recovery, latency, token cost,
+safety, and extensibility. Feature count is not a success metric.
 
-> Studying only the source code would teach you one team's choices for one
-> vertical and present them as the whole truth of agentic engineering. Studying
-> only blogs would leave you unable to actually build the core. You need both.
+**Applied/interview breadth — papers, engineering reports, and application
+frameworks.** `research/2026-agent-patterns.md` informs interview labs and can
+suggest product hypotheses, but it is not an Astra backlog. A pattern enters
+Astra only after passing Astra's feature-admission gate.
 
 ## Source-tiering rule (how to judge a reference)
 
@@ -75,7 +78,7 @@ Tiering used throughout this path:
 
 | Tier | Source | Trust |
 |---|---|---|
-| **T1** | First-party engineering blogs: Anthropic Engineering, Cognition, Chip Huyen, Hamel Husain | Load-bearing |
+| **T1** | First-party engineering reports: Manus, Anthropic Engineering, Cognition, Chip Huyen, Hamel Husain | Load-bearing within the system and date studied |
 | **T2** | Papers + specs: ReAct, Reflexion, Self-RAG, CRAG, RAGAS, MCP spec, A2A spec, OTel GenAI semconv | Load-bearing for *what a technique is* |
 | **T3** | Practitioner write-ups that demonstrably ran it in prod | Directional |
 | **Source** | `refs/claude-code-sourcemap` (the *how*) | Ground truth for the core |
@@ -93,14 +96,23 @@ agent/refs/
                                 (restored-src/src/QueryEngine.ts, Tool.ts,
                                  query.ts, context.ts, coordinator/, memdir/, ...)
   Astra/                     ← IMPLEMENTATION layer (yours): C#/.NET 10 agent
-                                framework. Each day's deliverable lands here.
-                                Re-implement, don't copy. Goal: exceed LangGraph
-                                by learning from Claude Code's design.
+                                runtime. Product-track deliverables land here
+                                only after passing its feature-admission gate.
+                                Goal: a Manus-style core whose coding
+                                specialization surpasses Claude Code/Codex on
+                                measured outcomes.
 ```
 
-Daily flow: **read the chapter (teaching) → check the source (how) → write it in
-Astra (implementation) → for the frontier half, the source is silent, so read
-`research/2026-agent-patterns.md` instead of the source.**
+Product-track flow: **name a real failure → read the relevant production source
+and engineering evidence → define a measurable invariant → implement the
+smallest Astra contract → run the payoff.** Claude Code source is authoritative
+for what Claude Code does; Manus's published engineering explains the general
+agent boundary. Neither source is a feature checklist.
+
+Interview-track flow: **study the pattern → implement or integrate it in a
+standalone lab → evaluate it → practice explaining the tradeoff.** Interview
+labs do not modify Astra unless an independently demonstrated product failure
+passes Astra's admission gate.
 
 Astra is a **read-write submodule** — develop in its working tree, commit there,
 then bump the pinned commit from this repo (same pattern as
@@ -108,18 +120,24 @@ then bump the pinned commit from this repo (same pattern as
 
 ## Non-negotiable scope constraint
 
-This path studies **agentic logic**, not commodity infrastructure. Per your
-explicit direction:
+The two curricula have different ownership rules.
 
-- **Build by hand:** the agent loop, tool orchestration, context/compaction,
-  permissions, multi-agent coordination, the *agentic part* of RAG (when to
-  retrieve, query rewriting, CRAG-style grading/correction, retrieval-as-tool),
-  the eval harness, the judge.
-- **Use off-the-shelf (do NOT reinvent):** vector DB, embedding models, the
-  tracing backend (Jaeger/OTel collector). RAG's agentic decisions are in
-  scope; the vector store underneath is not.
+**Astra product track:** build only reusable autonomous-runtime behavior:
+agent/action/observation execution, tool and action-space control, context and
+recoverable task state, environment/sandbox boundaries, permission and trust,
+failure recovery, worker isolation, measurement, and coding-agent
+specialization. Every subsystem needs a concrete failing task or benchmark.
 
-The line: *RAG is agentic; a vector DB is not.*
+**Applied interview track:** learn and demonstrate intent routing, ReAct and
+other orchestration patterns, generic workflows, production RAG, online eval,
+multi-tenant design, and framework translation. Use off-the-shelf vector stores,
+embedding models, workflow engines, and tracing backends. These labs may consume
+Astra but cannot force abstractions into it.
+
+**Always outside Astra Core:** model training/fine-tuning, a generic workflow
+engine, vector DB/embedding/document-ingestion infrastructure,
+application-specific intent taxonomies, and SaaS control-plane concerns. Astra
+must compose with them, not own them.
 
 ## Files in this folder
 
@@ -127,15 +145,16 @@ The line: *RAG is agentic; a vector DB is not.*
 |---|---|
 | `README.md` | This file. |
 | `why-agent.md` | Motivation — why agent engineering is the 2026 leverage point and how it ladders to the job search. (Companion to `notes/why.md`.) |
-| `curriculum-agent.md` | Track D day-by-day execution plan (D1–D16, two phases). |
-| `research/2026-agent-patterns.md` | Cited, verified research — the source of truth for the frontier half. |
+| `curriculum-agent.md` | Astra product-engineering track: the Manus-style autonomous core and coding specialization. |
+| `curriculum-agent-interview.md` | Applied-agent interview track; standalone labs and mocks that do not define Astra's backlog. |
+| `research/2026-agent-patterns.md` | Cited research for product hypotheses and interview labs, not an automatic Astra roadmap. |
 | `refs/` | The three submodules. |
-| `experiments/` | Per-day deliverables (`d01-agent-loop/` … `d16-capstone/`). Code lands in Astra; notes/analysis land here. |
+| `experiments/` | Product-track notes and payoffs. Astra code changes still require independent product justification. |
+| `interview/` | Applied-agent labs, system-design exercises, and timed mocks. |
 
 ## Where to start
 
-Read `why-agent.md` (motivation) → `curriculum-agent.md` Day D1 → skim
-`research/2026-agent-patterns.md` Part A (you'll reference it all the way
-through). Then open `refs/claude-reviews-claude/architecture/01-query-engine.md`
-and `refs/claude-code-sourcemap/restored-src/src/query.ts` side by side, and
-start writing the loop in Astra.
+For Astra work, read its `CLAUDE.md` feature-admission gate, then continue the
+next unfinished day in `curriculum-agent.md`. For interview preparation, use
+`curriculum-agent-interview.md`; do not open an Astra change merely because an
+interview topic appears there.
