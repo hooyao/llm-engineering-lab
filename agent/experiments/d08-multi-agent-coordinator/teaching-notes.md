@@ -383,3 +383,36 @@ The executable entry point only establishes configuration sources, applies the
 registration module, creates one coordinator scope, and resolves `AgentApp`.
 Configuration binding source generation is enabled, preserving Native AOT
 without reflection-based fallback.
+
+## Recoverable tool failure is not a terminal agent error
+
+The learner-run payoff exposed a consumer-contract ambiguity. `Read` returned
+`File not found`; `AgentLoop` correctly converted the exception into a
+model-visible `ToolResult` so the next model round could choose a corrected
+path, but it also emitted the generic `AgentEvent.Error`. `MultiAgentDemo`
+treated every `Error` as terminal and aborted before recovery.
+
+The event protocol now separates the two outcomes:
+
+```text
+recoverable tool exception
+  -> ToolFailure (operator-visible)
+  -> ToolResult("Error: ...") (model-visible)
+  -> next model round
+
+terminal agent failure
+  -> Error
+  -> current turn stops
+```
+
+The regression test requires this exact order:
+
+```text
+ToolUse -> ToolFailure -> ToolResult -> TextDelta
+```
+
+It also asserts two model calls. This makes recovery part of the typed event
+contract rather than a convention inferred from whether an exception object is
+present. The demo additionally prints bounded tool arguments and tells both the
+baseline and workers that relative paths resolve from the Astra repository
+root.

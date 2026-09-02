@@ -84,11 +84,39 @@ was integration verification: `Glob`, `Grep`, `Read`, and both `Agent` calls
 activated successfully on demand; both worker scopes completed; reports were
 batched; and the isolation marker remained absent.
 
+## Assistant-side payoff-harness recovery run — 2026-09-02
+
+After the learner exposed a `Read: File not found` event being treated as
+terminal by the demo consumer, the exact parent-root command completed with
+tool argument diagnostics and explicit repository-relative path instructions:
+
+```powershell
+dotnet run --project agent/refs/Astra/samples/MultiAgentDemo -c Release -- --real --root agent/refs/Astra
+```
+
+| Run | Total tokens | Cached input | Model calls | Tool calls | Wall time |
+|---|---:|---:|---:|---:|---:|
+| Single agent | 26,386 | 10,138 | 4 | 11 | 22,280 ms |
+| Coordinator only | 6,788 | 0 | 4 | 2 | included below |
+| Two workers | 146,146 | 107,373 | 13 | 29 | included below |
+| Multi-agent total | 152,934 | 107,373 | 17 | 31 | 65,067 ms |
+
+```text
+152,934 / 26,386 = 5.80x tokens
+65,067 / 22,280 = 2.92x wall time
+```
+
+Both workers completed, their duration maximum was 51,086 ms versus an 87,885
+ms sum (actual overlap), and the isolation marker remained absent. This random
+run did not itself select a missing file. The focused regression independently
+forces a tool exception and proves the typed continuation sequence
+`ToolUse -> ToolFailure -> ToolResult -> TextDelta` with two model calls.
+
 ## Interpretation
 
 This task was narrow and required one final explanation combining two closely
-related guards. Across the three assistant-side samples, multi-agent used
-0.97x-7.67x the tokens and took 1.86x-2.24x the wall time. The result is
+related guards. Across the four assistant-side samples, multi-agent used
+0.97x-7.67x the tokens and took 1.86x-2.92x the wall time. The result is
 evidence against using multi-agent by default: orchestration and synthesis
 latency outweighed parallelism here.
 

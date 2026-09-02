@@ -29,6 +29,9 @@ the coordinator; their full private histories never enter coordinator context.
   manually assembled options object.
 - `AgentTool` — starts clean-context read-only workers and returns immediately.
 - `WorkerCompletionXml` — emits escaped user-role task notifications.
+- `AgentEvent.ToolFailure` — distinguishes a recoverable tool exception already
+  returned to the model from a terminal agent error. The demo logs the failure
+  and lets the model correct its action instead of aborting the payoff.
 - `Astra.Cli` — registers `Agent`, waits outside the main loop for the active
   worker group, batches completions, and performs one synthesis turn.
 
@@ -36,7 +39,7 @@ Write-capable workers are intentionally not exposed through the CLI yet. The
 coordinator's write lane is implemented and tested, but the chosen strict
 file-version/MultiEdit transaction must exist before an LLM can use that lane.
 
-Verification: 112/112 tests, formatter clean, zero-warning Release build, and
+Verification: 113/113 tests, formatter clean, zero-warning Release build, and
 Native AOT publish successful.
 
 ## Notes
