@@ -1,5 +1,11 @@
 # D2 — Tool contract + behavioral permission flags
 
+> Post-D8 update (2026-08-31): the behavioral-classification decision below is
+> retained, but metadata/classification now lives in immutable
+> `ToolDefinition`; execution lives in `IToolExecutor`, activated as a keyed
+> transient only after permission. The remainder records the original D2 design
+> dialogue and should be read as historical derivation.
+
 Track D Day 2. Goal: replace the loop's "any tool just runs" with a **permission
 contract** on the tool itself, so D5 (the permission engine) has typed seams to
 attach to. D1 gave us the manual-dispatch path (`tool.ExecuteAsync` in the loop,

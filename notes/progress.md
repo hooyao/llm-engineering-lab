@@ -137,7 +137,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
 | **B** Pretrain+RLHF | same file | **B1 DONE (theory + working engine), as REVIEW/gap-fill.** Reverse-mode autodiff taught as 4 steps (forward builds graph / local derivative / chain rule / reverse-topo + accumulate) + the notation traps (`d` is the derivative operator not division; `de/da != e/a`; the two-equals-signs `dL/dd = f = 2.0` = rule-then-plug-in) + a 3rd op `tanh` (`do/dz = 1 - o^2`). `experiments/b01-micrograd/{micrograd.py (Value class + 4 demos, ALL PASS incl. a trained neuron loss 3.86->0.007), learning-notes.md (fact-based, mermaid graphs per step, activation-extended)}`. **B4 has a Segment-0 stub only** (`experiments/b04-attention/learning-notes.md` — the "attention is the only cross-token op" frame, not yet taught). | **B2 — makemore (scalar->tensor jump: embedding/softmax/cross-entropy).** OR resume B4 (attention) which is still the pulled-forward priority. Learner is doing Track B from the start as review; B1's engine is ready to be re-typed from memory (Karpathy "type don't paste") on the new machine. |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D7 done** (D1–D5 Linux-verified) — D1: agent loop. D2: `Classify -> ToolAction` + streaming. D3: tool orchestration (`ToolBatching.Partition` + `Channel` fan-in). D4: control layer (cancel kills the process **tree** then reaps). D5: permission pipeline — 3-state decision (Allow/Deny/Ask), pluggable `IPermissionPolicy` + `IUserConfirmation` + `DefaultPermissionEngine`, fail-closed. D6: three-layer context assembly + byte-stable a+b prefix. D7: explicit compaction result union; cache-aware allowlisted microcompact; LLM full compact with verbatim recent tail; atomic preflight before every model round-trip. **Post-D7 usability follow-up: Claude-compatible `Read` / `Write` / `Edit` / `Glob` / `Grep`, newline/BOM-safe exact editing, opt-in multi-root restriction, and direct confirmed `PowerShellTool`; real `gpt-5.6-sol` large-file/create flows verified; 94 tests; merged via Astra PR #9.** Notes: `agent/experiments/d0{1..7}-*`. **Astra is at `main@cffdf7a`.** | **D8 — multi-agent coordinator:** two isolated workers, condensed summaries, single-threaded writes, and measured token multiple. OR the deferred D4 control-plane / full InputSchema validation. **Transformer foundation gap remains; see 2026-07-02 LOG.** |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D7 done; D8 IMPLEMENTED + ASSISTANT-VERIFIED, LEARNER PAYOFF PENDING.** D1: loop. D2: behavioral tool contract. D3: stable-partition orchestration. D4: process-tree cancellation. D5: permission pipeline. D6: three-layer context assembly. D7: cache-aware compaction. Post-D7: Claude-compatible file tools + PowerShell. **D8: clean `AgentLoop` per worker, bounded `WorkerReport` / trusted `WorkerCompletion`, provider usage tracking, parallel read workers, targeted cancellation, one writer lane, escaped XML notification batching, CLI `Agent`, and real `gpt-5.6-sol` comparison. Assistant run: single 130,251 tokens/29.7s; multi 126,416 tokens/66.3s = 0.97x tokens and 2.24x slower; no isolation-marker leak.** Notes: `agent/experiments/d0{1..8}-*`. Astra `main@6b111fb` (PRs #10–#12 merged). | **Run the D8 payoff personally:** `dotnet run --project agent/refs/Astra/samples/MultiAgentDemo -c Release -- --real --root agent/refs/Astra`; interpret token multiple and wall time. Then mark D8 done and write the Phase D-I recap. Write-capable workers remain disabled pending strict file-version/MultiEdit transactions. |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -166,16 +166,152 @@ When the user is ready to continue, the natural next steps are:
    HF auth, re-mention this.
 4. User mentioned reading Parr & Howard's "Matrix Calculus You Need for Deep
    Learning" in parallel (Track C). They are NOT blocked on math to start tracks A or B.
-5. **Track D (agent engineering) exists now** — `agent/curriculum-agent.md`,
-   D1–D16, two phases. Day 1 is `agent/experiments/d01-agent-loop/`: implement
-   the `while(true)` agent loop in the Astra submodule. Not started. The project
-   is now **three legs** (model side / agentic side / career) — see CLAUDE.md
-   "Repository Purpose". The agent-side work is mode-gated like Tracks A/B/C
-   (tutor mode for new Track D subsystem work).
+5. **Track D is split by ownership.** `agent/curriculum-agent.md` is now the
+   D1–D20 Astra product track: a Manus-style general autonomous core whose coding
+   specialization is measured against Claude Code/Codex. D1–D7 are done and D8
+   is implemented/assistant-verified with the learner payoff pending.
+   `agent/curriculum-agent-interview.md` separately covers intent routing,
+   ReAct comparisons, generic workflows, production RAG, and interview mocks;
+   those topics do not automatically enter Astra.
 
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-09-02 — Astra product scope separated from agent-interview breadth
+
+- Set Astra's product north star to a Manus-style general autonomous-agent
+  core, with coding as the first specialization and Claude Code/Codex as
+  measured comparison targets. "Surpass" now means task success, recovery,
+  latency/token/cache cost, safety, debuggability, and extensibility rather than
+  feature count.
+- Added an explicit Astra feature-admission gate: every subsystem needs a
+  reproduced autonomous/coding-agent failure, a measurable payoff, a clear
+  ownership argument, a minimal contract, and preservation of cancellation,
+  Native AOT, serialization, security, and performance guarantees.
+- Replaced the old D9–D16 generic RAG/research-agent roadmap with D9–D20 product
+  hardening: strict file transactions, durable resume, execution environments,
+  state-aware action space, long-horizon task state, failure recovery,
+  provenance/security, OTel, evals, capability integration, and a general +
+  coding benchmark capstone.
+- Added `agent/curriculum-agent-interview.md` and `agent/interview/` for ReAct,
+  intent routing, generic workflow orchestration, production RAG/eval,
+  production system design, framework translation, and timed mocks. These labs
+  may consume Astra but cannot define its backlog.
+- Explicit Astra non-goals now include model training/fine-tuning, generic
+  workflow engines, application RAG infrastructure, intent taxonomies, and
+  multi-tenant SaaS control planes. Astra composes with those systems rather
+  than owning them.
+- Astra product-scope PR #11 and its branch-neutral progress fix PR #12 are
+  merged. This parent update pins Astra `main@6b111fb`.
+
+### 2026-08-31 — Astra CLI moved to strongly typed options and constructor injection
+
+- Removed direct configuration indexers, manual `new CompactionOptions`, and
+  optional `GetService<IContextCompactor>` wiring from the CLI composition root.
+  `Program.cs` now only loads configuration sources, calls `AddAstraCli`, creates
+  one coordinator scope, and starts `AgentApp`.
+- Bound and validated `IOptions<LlmConfig>`, `IOptions<CompactionOptions>`,
+  `IOptions<WorkspaceOptions>`, and `IOptions<PowerShellOptions>`.
+  `ConfiguredChatClient`, `ContextCompactor`, `WorkspaceFileSystem`, and
+  `PowerShellTool` receive options through constructor injection.
+- `CompactionOptionsPostConfigure` derives `MaxOutputTokens` from the LLM
+  options. `Compaction:Enabled=false` retains a complete DI graph and makes the
+  compactor return `NotNeeded` before token estimation, rather than making the
+  service nullable or absent.
+- Added binding/post-configuration/validation tests, including command-line
+  workspace override and invalid-endpoint failure. Managed and Native AOT CLI
+  startup both succeeded; a real `gpt-5.6-sol` turn returned exactly
+  `OPTIONS_OK`. Verification: 112/112 tests, formatter clean, zero-warning
+  Release build, and Native AOT publish.
+
+### 2026-08-31 — Tool executors moved to invocation-time activation
+
+- Split the old always-instantiated `ITool` object into immutable
+  `ToolDefinition` metadata and execution-only `IToolExecutor`. `AgentLoop`
+  retains definitions for provider advertisement and input-dependent
+  classification, but constructs no executable tool at session startup.
+- All built-in input schemas now parse once into static readonly `JsonElement`
+  values. CLI executors use keyed transient DI registrations and are resolved
+  only after lookup, classification, and permission. Unknown, unused, and
+  denied calls never instantiate an executor; every admitted call receives a
+  fresh instance.
+- Added direct tests proving schema advertisement with zero activation,
+  permission denial with zero activation, and two distinct executor instances
+  for two admitted calls. Verification: 108/108 tests, formatter clean,
+  zero-warning Release build, and Native AOT publish.
+- Real `gpt-5.6-sol` integration successfully activated `Glob`, `Grep`, `Read`,
+  and `Agent` on demand; both workers completed and the isolation marker did not
+  leak. This stochastic sample measured 7.67x tokens and 1.86x wall time because
+  the single-agent baseline completed with only eight tool calls; it is recorded
+  as an activation-path check rather than a stable cost estimate.
+
+### 2026-08-31 — D8 worker lifecycle moved to DI-owned execution scopes
+
+- Replaced the shared `IWorkerRunner` instance with
+  `IWorkerSessionFactory` / `IWorkerSession`. `WorkerCoordinator` now owns only
+  scheduling state; each admitted worker runs in an independent async
+  dependency-injection scope containing scoped `IWorker`, `AgentLoop`, provider
+  client, telemetry, and private conversation state.
+- Worker scopes are created only after concurrency/write admission and disposed
+  before terminal completion publication. Runtime task/request values remain
+  explicit session inputs rather than mutable scoped or `AsyncLocal` state.
+- Worker/session execution now returns `Task<WorkerCompletion>`. The session
+  stores and returns the same durable handle, owns a linked lifetime
+  cancellation source, and on concurrent disposal performs cancel → await
+  execution → dispose scope. This removes the previous
+  `ValueTask -> Task -> ValueTask` conversion without losing lifecycle control.
+- The CLI composition root now places the coordinator `AgentLoop`,
+  `WorkerCoordinator`, and `AgentTool` in one conversation scope. Provider
+  clients are per-scope, so parallel correctness no longer relies on an
+  undocumented concurrency guarantee from the general `IChatClient` interface.
+- Added lifecycle tests for distinct scope identity/disposal, avoiding scope
+  allocation while a worker is queued, and dispose-time cancel-and-join before
+  scope release. Verification: 112/112 tests,
+  formatter clean, zero-warning Release build, and Native AOT publish.
+- Re-ran the real local `gpt-5.6-sol` demo after the refactor. Both scoped
+  workers completed with actual overlap and no isolation-marker leak. The run
+  measured single-agent 156,501 tokens/31.0s versus multi-agent 271,691
+  tokens/60.1s = 1.74x tokens and 1.94x slower. The earlier 0.97x-token sample
+  remains recorded; the difference came from stochastic model/tool-call count,
+  while both samples show higher multi-agent latency for this narrow task.
+
+### 2026-08-31 — D8 implementation verified; learner payoff pending
+
+- Implemented D8 on Astra branch `codex/d08-multi-agent`: one clean
+  `AgentLoop` per worker, typed bounded reports, trusted completion/usage
+  envelopes, targeted cancellation, bounded concurrency, a global writer lane,
+  escaped XML notifications, completion batching, CLI `Agent`, and
+  `samples/MultiAgentDemo`.
+- Ten deterministic tests verify actual read overlap, writer serialization,
+  targeted cancellation, exactly-once completion fan-in, context isolation,
+  report parsing/bounds, XML injection escaping, and one synthesis turn for two
+  worker completions. Full solution verification and Native AOT pass.
+- Real `gpt-5.6-sol` comparison used the same compaction/permission audit for
+  both paths. Single-agent: 130,251 tokens, 29,652 ms, 6 model calls, 17 tool
+  calls. Multi-agent: 126,416 tokens, 66,288 ms, 12 model calls, 35 tool calls.
+  Result: 0.97x tokens but 2.24x wall time; this narrow task did not justify
+  orchestration. The coordinator-only sentinel did not appear in worker reports.
+- CLI exposes only read-only workers. Although the coordinator serializes write
+  workers internally, LLM write access remains disabled until the selected
+  strict version-conflict and atomic MultiEdit semantics are implemented.
+- D8 remains incomplete until the learner runs the payoff command in
+  `agent/experiments/d08-multi-agent-coordinator/README.md` and reads the result.
+
+### 2026-08-28 — D8 design started: worker context and stale-write conflicts
+
+- Synced the parent repo to `main@45d0df3` and Astra to `main@cffdf7a` after
+  both file-tool PRs merged, then started D8 on branch `codex/d08-multi-agent`.
+- Verified from Claude Code source that coordinator-mode fresh workers receive
+  an independent system/tool environment plus one explicit self-contained task
+  prompt, not the coordinator transcript. Fork workers are the separate
+  full-context path and are disabled in coordinator mode.
+- Separated three mechanisms that the initial design discussion had combined:
+  scheduling overlapping writers, authorizing a tool call, and detecting that a
+  worker reasoned from a stale file version.
+- Added `agent/experiments/d08-multi-agent-coordinator/teaching-notes.md` with a
+  contradictory two-writer example and the required D8 conflict test. No Astra
+  D8 implementation has started yet.
 
 ### 2026-08-28 — Astra CLI file + PowerShell tools merged via PR #9
 

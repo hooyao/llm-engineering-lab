@@ -1,8 +1,12 @@
 # 2026 Agent Engineering — verified patterns and primary sources
 
-> This file is the **source of truth for the "frontier half"** of Track D (the
-> half that Claude Code's source code does not teach: RAG, agent eval, memory,
-> interop). It is the synthesized output of a fan-out deep-research pass (106
+> This file is the **research corpus for product hypotheses and applied-agent
+> interview labs**, not an Astra feature backlog. A pattern enters Astra only
+> after a concrete autonomous/coding-agent failure passes the feature-admission
+> gate in Astra's `CLAUDE.md`; generic workflows, application RAG, intent
+> routing, and interview breadth otherwise remain in
+> `agent/curriculum-agent-interview.md`. The file is the synthesized output of a
+> fan-out deep-research pass (106
 > sub-agents, 24 sources fetched, 120 claims extracted, 25 adversarially
 > verified at 3 votes each, 0 refuted) plus a targeted supplemental pass that
 > filled the two gaps the funnel missed (Agentic RAG internals, MCP/A2A interop).
@@ -138,6 +142,19 @@ anxiety"* (wrapping up prematurely near its limit) *"became dead weight"* on Opu
 termination observation, capped a 1M beta at 200k to mitigate). **Lesson for a
 hand-built harness: don't over-fit workarounds to one model generation.**
 → https://www.anthropic.com/engineering/managed-agents
+
+### A10. Manus defines a general autonomous core through context, environment, and recovery
+**T1 · directly verified 2026-09-02.** Manus describes its runtime as a repeated
+action/environment/observation loop over a virtual-machine sandbox, with an
+average input-to-output token ratio around 100:1. Its published design rules are
+runtime rules rather than application features: keep the prefix stable and
+history append-only for KV-cache; constrain a stable action space instead of
+adding/removing tool definitions; use the file system as restorable external
+context; recite a durable task plan into recent attention; and retain failed
+actions/observations so the model can recover. This supports a Manus-style
+general core without implying that the core owns generic workflows, RAG
+infrastructure, or application intent policy.
+→ https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus
 
 ---
 

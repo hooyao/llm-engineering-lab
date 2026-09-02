@@ -23,9 +23,11 @@ threads / next steps the user wants to pick up.
 - **Model side** ("continue fine-tuning / Track A/B/C", "next curriculum day") →
   `notes/curriculum-v2-execution.md` + the LEARNING STATE block in progress.md.
 - **Agent side** ("continue agent", "Track D", "work on Astra") → read
-  `agent/README.md` (two-halves framing + tutor-mode rule) then
-  `agent/curriculum-agent.md` (find the next undone D-day). Once you start
-  *building*, the agent-core state lives in the **Astra submodule's own
+  `agent/README.md` (Astra-product vs interview-preparation boundary) then
+  `agent/curriculum-agent.md` (find the next undone Astra product day). For
+  applied-agent interview labs, use `agent/curriculum-agent-interview.md`
+  instead. Once you start *building Astra*, the runtime state lives in the
+  **Astra submodule's own
   `progress.md` and `CLAUDE.md`** (`agent/refs/Astra/`) — read those too; this
   repo only tracks which Track D day is next, not what's implemented inside Astra.
 - **Career** ("relocation", "which role/site", "comp") → `notes/career-transition-research.md`.
@@ -49,14 +51,16 @@ tools/
   verify_models.py                         ← SHA256 integrity checker
   launch_pytorch.sh                        ← standard `docker run ...` wrapper
 experiments/                               ← model-side per-day subdirs (one per day in Tracks A/B/C)
-agent/                                     ← AGENTIC leg (Track D): build a Claude Code-style agent core by hand
-  README.md                                ← two-halves framing + source-tiering rule + how the 3 submodules combine
+agent/                                     ← AGENTIC leg: Astra product track + separate interview labs
+  README.md                                ← product boundary, source-tiering, and curriculum ownership
   why-agent.md                             ← motivation for the agent path; wired to the job search
-  curriculum-agent.md                      ← Track D day-by-day plan (D1–D16, two phases)
-  research/2026-agent-patterns.md          ← cited/verified research — source of truth for the frontier half
+  curriculum-agent.md                      ← Astra product-engineering plan (D1–D20)
+  curriculum-agent-interview.md            ← applied-agent interview labs; not an Astra backlog
+  research/2026-agent-patterns.md          ← cited research; hypotheses and interview evidence, not product scope
   refs/                                    ← submodules: claude-reviews-claude (teaching),
                                              claude-code-sourcemap (source of truth), Astra (your C# impl)
   experiments/                             ← Track D per-day deliverables (dNN-<slug>)
+  interview/                               ← application labs, system-design work, and timed mocks
 dgx-spark-playbooks/                       ← submodule → NVIDIA/dgx-spark-playbooks
 ```
 
@@ -79,11 +83,13 @@ fine-tuning project. It has **three legs**:
    (RM + PPO + DPO). Plan: `notes/curriculum-v2-execution.md` (Tracks A/B/C).
    Per-day work under `experiments/<track><day>-<slug>/` (e.g.
    `experiments/a01-mem-budget/`).
-2. **Agentic side** — building a Claude Code-style agent core **by hand** in
-   Astra (the user's C# framework), plus the half Claude Code omits (RAG, agent
-   eval, memory, interop). Plan: `agent/curriculum-agent.md` (Track D, D1–D16).
-   Per-day work under `agent/experiments/dNN-<slug>/`; code lands in the Astra
-   submodule. Start by reading `agent/README.md`.
+2. **Agentic side** — building a Manus-style general autonomous-agent core **by
+   hand** in Astra, with a coding specialization measured against Claude Code
+   and Codex. The Astra product plan is `agent/curriculum-agent.md` (D1–D20).
+   Applied-agent interview breadth (intent routing, ReAct comparisons, generic
+   workflows, production RAG, and mocks) lives separately in
+   `agent/curriculum-agent-interview.md` and does not define Astra's backlog.
+   Start by reading `agent/README.md`.
 3. **Career transition** — where the skills land: target roles, locations,
    leveling, visa, comp. `notes/career-transition-research.md`. Per its §2,
    "AI/LLM Agent Engineer" is the most reachable model-facing role for this
@@ -137,9 +143,9 @@ history: give the answer, explain briefly why, flag uncertainty.
 
 Triggered automatically when **all** of the following are true:
 
-- The work targets a path matching `experiments/[abc]\d+-*` (e.g. `experiments/a01-mem-budget/`, `experiments/c03-chain-rule/`) or `agent/experiments/d\d+-*` (e.g. `agent/experiments/d01-agent-loop/`), or the deliverable is a Track D subsystem written into the Astra submodule
+- The work targets a path matching `experiments/[abc]\d+-*` (e.g. `experiments/a01-mem-budget/`, `experiments/c03-chain-rule/`), `agent/experiments/d\d+-*` (e.g. `agent/experiments/d01-agent-loop/`), or `agent/interview/i\d+-*`, or the deliverable is a Track D subsystem written into the Astra submodule
 - The task is implementing or designing something *new* (not debugging existing curriculum code)
-- The concept under discussion is one the curriculum (`notes/curriculum-v2-execution.md` for the model side, `agent/curriculum-agent.md` for Track D) names as a learning target for that day
+- The concept under discussion is one the relevant curriculum (`notes/curriculum-v2-execution.md`, `agent/curriculum-agent.md`, or `agent/curriculum-agent-interview.md`) names as a learning target for that day
 
 Also triggered explicitly when the user says **"teach me ..."**, **"walk me through ..."**, or **"don't just give me the answer"**.
 
@@ -206,7 +212,8 @@ is the advantage of an AI tutor over a static syllabus — the A2 payoff (a
 before/after generation diff) was the right reward precisely because it was
 generated in response to the learner saying "I see no difference, I can't keep
 learning," not because a plan predicted it. So: the day-plan files
-(`curriculum-v2-execution.md`, `curriculum-agent.md`) should require a payoff for
+(`curriculum-v2-execution.md`, `curriculum-agent.md`, and
+`curriculum-agent-interview.md`) should require a payoff for
 every day, but the specific payoff is co-designed with the learner when that day
 is reached, not locked in earlier.
 
