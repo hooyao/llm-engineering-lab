@@ -127,5 +127,31 @@ does not contradict that report.
 
 ## Learner run
 
-Pending. Record the learner's observed values and interpretation here before
-marking D8 complete.
+Completed on 2026-09-03 with the corrected parent-root command.
+
+| Run | Total tokens | Cached input | Model calls | Tool calls | Wall time |
+|---|---:|---:|---:|---:|---:|
+| Single agent | 33,130 | 13,415 | 4 | 12 | 27,831 ms |
+| Coordinator only | 5,451 | 0 | 3 | 2 | included below |
+| Two workers | 83,327 | 51,095 | 10 | 26 | included below |
+| Multi-agent total | 88,778 | 51,095 | 13 | 28 | 41,029 ms |
+
+```text
+88,778 / 33,130 = 2.68x tokens
+41,029 / 27,831 = 1.47x wall time
+53,250 / 28,469 = 1.87x worker-phase overlap speedup
+```
+
+The worker maximum duration was 28,469 ms versus a 53,250 ms sum, so the two
+workers genuinely overlapped and saved about 24.8 seconds relative to serial
+worker execution. The complete system was still about 13.2 seconds slower than
+the single agent because it made 3.25x as many model calls and 2.33x as many
+tool calls, duplicated repository investigation, and paid dispatch plus
+synthesis overhead. Both worker reports completed and the isolation marker was
+absent.
+
+The learner-visible conclusion is therefore not that parallelism failed. The
+scheduler and isolation worked; orchestration was the wrong choice for this
+narrow task. Multi-agent should be selected only when independent breadth or
+slow external work is large enough to exceed worker startup, duplicated
+context, and synthesis cost.

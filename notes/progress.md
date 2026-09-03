@@ -137,7 +137,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
 | **B** Pretrain+RLHF | same file | **B1 DONE (theory + working engine), as REVIEW/gap-fill.** Reverse-mode autodiff taught as 4 steps (forward builds graph / local derivative / chain rule / reverse-topo + accumulate) + the notation traps (`d` is the derivative operator not division; `de/da != e/a`; the two-equals-signs `dL/dd = f = 2.0` = rule-then-plug-in) + a 3rd op `tanh` (`do/dz = 1 - o^2`). `experiments/b01-micrograd/{micrograd.py (Value class + 4 demos, ALL PASS incl. a trained neuron loss 3.86->0.007), learning-notes.md (fact-based, mermaid graphs per step, activation-extended)}`. **B4 has a Segment-0 stub only** (`experiments/b04-attention/learning-notes.md` — the "attention is the only cross-token op" frame, not yet taught). | **B2 — makemore (scalar->tensor jump: embedding/softmax/cross-entropy).** OR resume B4 (attention) which is still the pulled-forward priority. Learner is doing Track B from the start as review; B1's engine is ready to be re-typed from memory (Karpathy "type don't paste") on the new machine. |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D7 done; D8 IMPLEMENTED + ASSISTANT-VERIFIED, LEARNER PAYOFF PENDING.** D1: loop. D2: behavioral tool contract. D3: stable-partition orchestration. D4: process-tree cancellation. D5: permission pipeline. D6: three-layer context assembly. D7: cache-aware compaction. Post-D7: Claude-compatible file tools + PowerShell. **D8: clean `AgentLoop` per worker, bounded `WorkerReport` / trusted `WorkerCompletion`, provider usage tracking, parallel read workers, targeted cancellation, one writer lane, escaped XML notification batching, CLI `Agent`, and real `gpt-5.6-sol` comparison. Assistant run: single 130,251 tokens/29.7s; multi 126,416 tokens/66.3s = 0.97x tokens and 2.24x slower; no isolation-marker leak.** Notes: `agent/experiments/d0{1..8}-*`. Astra `main@82c357e` (PRs #10–#13 merged; typed recoverable `ToolFailure` fix included). | **Run the D8 payoff personally:** `dotnet run --project agent/refs/Astra/samples/MultiAgentDemo -c Release -- --real --root agent/refs/Astra`; interpret token multiple and wall time. Then mark D8 done and write the Phase D-I recap. Write-capable workers remain disabled pending strict file-version/MultiEdit transactions. |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D8 DONE.** D1: loop. D2: behavioral tool contract. D3: stable-partition orchestration. D4: process-tree cancellation. D5: permission pipeline. D6: three-layer context assembly. D7: cache-aware compaction. Post-D7: Claude-compatible file tools + PowerShell. **D8: isolated DI-owned worker loops, bounded reports/trusted completions, parallel reads, targeted cancellation, one writer lane, escaped completion batching, and typed recoverable `ToolFailure`. Learner payoff: single agent 33,130 tokens/27.8s; multi-agent 88,778 tokens/41.0s = 2.68x tokens and 1.47x slower, despite 1.87x worker-phase overlap; two reports completed and no isolation marker leaked.** Phase D-I recap: `agent/experiments/track-d1-recap.md`. Astra `main@010e974` (PR #14 merged). | **D9 — strict file versions + atomic same-response MultiEdit.** Write-capable workers remain disabled until stale-read conflicts and all-or-nothing same-file edit transactions pass. |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -168,8 +168,8 @@ When the user is ready to continue, the natural next steps are:
    Learning" in parallel (Track C). They are NOT blocked on math to start tracks A or B.
 5. **Track D is split by ownership.** `agent/curriculum-agent.md` is now the
    D1–D20 Astra product track: a Manus-style general autonomous core whose coding
-   specialization is measured against Claude Code/Codex. D1–D7 are done and D8
-   is implemented/assistant-verified with the learner payoff pending.
+   specialization is measured against Claude Code/Codex. D1–D8 are done; D9
+   strict file versions and atomic same-response MultiEdit is next.
    `agent/curriculum-agent-interview.md` separately covers intent routing,
    ReAct comparisons, generic workflows, production RAG, and interview mocks;
    those topics do not automatically enter Astra.
@@ -177,6 +177,25 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-09-03 — Track D Phase I complete after learner-run D8 payoff
+
+- The learner reran the corrected `MultiAgentDemo` and observed single-agent
+  33,130 tokens/27.8s versus coordinator+workers 88,778 tokens/41.0s: 2.68x
+  tokens and 1.47x slower end to end.
+- Worker duration maximum was 28.5s versus a 53.3s sum, equivalent to 1.87x
+  worker-phase speedup. Parallel scheduling and context isolation worked; the
+  narrow task still lost because duplicated investigation plus dispatch and
+  synthesis exceeded the 24.8s of worker time saved.
+- Both worker reports completed and the coordinator-only marker did not leak.
+  D8's learner-visible conclusion is that multi-agent is selective architecture,
+  not a default: independent breadth or slow external work must dominate its
+  duplicated context and synthesis cost.
+- Added `agent/experiments/track-d1-recap.md`, covering D1–D8 invariants,
+  verification evidence, the typed recoverable-tool-failure correction, the
+  learner payoff, Astra's product boundary, and the remaining stale-write risk.
+- D1–D8 / Phase D-I is complete. D9 strict file versions and atomic
+  same-response MultiEdit is next. Astra PR #14 merged as `main@010e974`.
 
 ### 2026-09-02 — D8 payoff harness now preserves recoverable tool failures
 

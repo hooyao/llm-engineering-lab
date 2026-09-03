@@ -1,7 +1,7 @@
 # D8 — Multi-Agent Coordinator
 
-Status: implementation and assistant-side verification complete; learner-run
-payoff pending.
+Status: complete. Implementation, assistant-side verification, recoverable
+tool-failure handling, and the learner-run payoff are all recorded.
 
 Current decision: D8 v1 uses strict file-version conflicts and never
 automatically rebases a stale worker edit. Eligible adjacent same-file edits in
@@ -47,14 +47,14 @@ Native AOT publish successful.
 - [Coordination correctness boundaries](teaching-notes.md)
 - [Measured payoff](results.md)
 
-## Payoff — learner run required
+## Payoff — learner run completed 2026-09-03
 
 ```powershell
 dotnet run --project agent\refs\Astra\samples\MultiAgentDemo -c Release -- --real --root agent\refs\Astra
 ```
 
 The demo runs the same repository audit once with a single agent and once with
-a coordinator plus two isolated workers. It prints both answers, wall time,
-provider-reported tokens, model/tool calls, token multiple, and an isolation
-sentinel check. D8 is not complete until the learner runs this and interprets
-the comparison.
+a coordinator plus two isolated workers. The learner observed 2.68x tokens and
+1.47x slower end-to-end execution even though the worker phase achieved 1.87x
+overlap. Both reports completed and the isolation sentinel did not leak. See
+`results.md` for the complete measurements and interpretation.
