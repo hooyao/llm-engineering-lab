@@ -84,11 +84,39 @@ was integration verification: `Glob`, `Grep`, `Read`, and both `Agent` calls
 activated successfully on demand; both worker scopes completed; reports were
 batched; and the isolation marker remained absent.
 
+## Assistant-side payoff-harness recovery run — 2026-09-02
+
+After the learner exposed a `Read: File not found` event being treated as
+terminal by the demo consumer, the exact parent-root command completed with
+tool argument diagnostics and explicit repository-relative path instructions:
+
+```powershell
+dotnet run --project agent/refs/Astra/samples/MultiAgentDemo -c Release -- --real --root agent/refs/Astra
+```
+
+| Run | Total tokens | Cached input | Model calls | Tool calls | Wall time |
+|---|---:|---:|---:|---:|---:|
+| Single agent | 26,386 | 10,138 | 4 | 11 | 22,280 ms |
+| Coordinator only | 6,788 | 0 | 4 | 2 | included below |
+| Two workers | 146,146 | 107,373 | 13 | 29 | included below |
+| Multi-agent total | 152,934 | 107,373 | 17 | 31 | 65,067 ms |
+
+```text
+152,934 / 26,386 = 5.80x tokens
+65,067 / 22,280 = 2.92x wall time
+```
+
+Both workers completed, their duration maximum was 51,086 ms versus an 87,885
+ms sum (actual overlap), and the isolation marker remained absent. This random
+run did not itself select a missing file. The focused regression independently
+forces a tool exception and proves the typed continuation sequence
+`ToolUse -> ToolFailure -> ToolResult -> TextDelta` with two model calls.
+
 ## Interpretation
 
 This task was narrow and required one final explanation combining two closely
-related guards. Across the three assistant-side samples, multi-agent used
-0.97x-7.67x the tokens and took 1.86x-2.24x the wall time. The result is
+related guards. Across the four assistant-side samples, multi-agent used
+0.97x-7.67x the tokens and took 1.86x-2.92x the wall time. The result is
 evidence against using multi-agent by default: orchestration and synthesis
 latency outweighed parallelism here.
 
@@ -99,5 +127,31 @@ does not contradict that report.
 
 ## Learner run
 
-Pending. Record the learner's observed values and interpretation here before
-marking D8 complete.
+Completed on 2026-09-03 with the corrected parent-root command.
+
+| Run | Total tokens | Cached input | Model calls | Tool calls | Wall time |
+|---|---:|---:|---:|---:|---:|
+| Single agent | 33,130 | 13,415 | 4 | 12 | 27,831 ms |
+| Coordinator only | 5,451 | 0 | 3 | 2 | included below |
+| Two workers | 83,327 | 51,095 | 10 | 26 | included below |
+| Multi-agent total | 88,778 | 51,095 | 13 | 28 | 41,029 ms |
+
+```text
+88,778 / 33,130 = 2.68x tokens
+41,029 / 27,831 = 1.47x wall time
+53,250 / 28,469 = 1.87x worker-phase overlap speedup
+```
+
+The worker maximum duration was 28,469 ms versus a 53,250 ms sum, so the two
+workers genuinely overlapped and saved about 24.8 seconds relative to serial
+worker execution. The complete system was still about 13.2 seconds slower than
+the single agent because it made 3.25x as many model calls and 2.33x as many
+tool calls, duplicated repository investigation, and paid dispatch plus
+synthesis overhead. Both worker reports completed and the isolation marker was
+absent.
+
+The learner-visible conclusion is therefore not that parallelism failed. The
+scheduler and isolation worked; orchestration was the wrong choice for this
+narrow task. Multi-agent should be selected only when independent breadth or
+slow external work is large enough to exceed worker startup, duplicated
+context, and synthesis cost.
