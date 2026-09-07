@@ -3,11 +3,12 @@
 Status: complete. Implementation, assistant-side verification, recoverable
 tool-failure handling, and the learner-run payoff are all recorded.
 
-Current decision: D8 v1 uses strict file-version conflicts and never
-automatically rebases a stale worker edit. Eligible adjacent same-file edits in
-one assistant response become one internal all-or-nothing transaction; later
-edits require another `Read`. Workers return only a bounded condensed report to
-the coordinator; their full private histories never enter coordinator context.
+Current follow-up decision: D9 uses per-agent content-hash observations as a
+freshness guard, not filesystem transactions. A changed file requires one new
+`Read`; a successful write advances that agent's observation. Astra serializes
+same-path writes across worker scopes and lets unrelated workers overlap. Workers
+return only a bounded condensed report to the coordinator; their full private
+histories never enter coordinator context.
 
 ## Implementation
 
@@ -18,8 +19,8 @@ the coordinator; their full private histories never enter coordinator context.
 - `AgentLoopWorker` — runs the scope-owned `AgentLoop`, parses the
   source-generated JSON report, and reads scope-owned provider telemetry.
 - `WorkerCoordinator` — owns the coordinator-session registry, targeted
-  cancellation, bounded worker slots, completion fan-in, batching, and a global
-  single-writer lane; it never shares a worker instance.
+  cancellation, bounded worker slots, completion fan-in, and batching; it never
+  shares a worker instance. D9 moves write ordering to canonical file paths.
 - Tool activation is also scope-correct: `AgentLoop` advertises immutable
   `ToolDefinition` metadata, then resolves one keyed transient `IToolExecutor`
   only after an invocation passes classification and permission.
@@ -35,9 +36,9 @@ the coordinator; their full private histories never enter coordinator context.
 - `Astra.Cli` — registers `Agent`, waits outside the main loop for the active
   worker group, batches completions, and performs one synthesis turn.
 
-Write-capable workers are intentionally not exposed through the CLI yet. The
-coordinator's write lane is implemented and tested, but the chosen strict
-file-version/MultiEdit transaction must exist before an LLM can use that lane.
+Write-capable workers were intentionally not exposed during D8. D9 adds a
+permission-classified `access_mode=write`, per-scope observations, same-path
+write gates, read-only enforcement, and trusted changed-path reporting.
 
 Verification: 113/113 tests, formatter clean, zero-warning Release build, and
 Native AOT publish successful.

@@ -231,7 +231,7 @@ expensive one.
   recent window) and (3) **full compact** (an LLM-summary sub-agent). Tune the
   summary "maximize recall first, then precision" (from the research). Note in
   your log that compaction loses verbatim detail (research A5: high-level 3/3,
-  obscure 0/3) — which sets up D9's memory tool.
+  obscure 0/3) — which sets up D13's file-backed working memory.
 
 **Deliverable:** a session that would overflow instead compacts and continues;
 log token count before/after each tier.
@@ -253,8 +253,8 @@ hurts — both camps' views (Anthropic pro-for-research, Cognition anti-for-codi
 - In Astra: spawn a worker with a **clean, isolated context window** (it cannot
   see the coordinator's conversation), have it return a condensed
   1,000–2,000-token summary via the XML `task-notification` protocol. Keep
-  a global single-writer lane, but do not expose write-capable workers until
-  D9's strict file-version and atomic MultiEdit invariants pass.
+  write-capable workers unexposed until D9 adds per-agent file observations,
+  stale-read recovery, and same-path write serialization.
 - Read both `research/2026-agent-patterns.md` Part C and the two Cognition posts.
   Write 5 lines on when you'd reach for multi-agent vs a single agent.
 
@@ -287,35 +287,44 @@ owns execution, environment, context, recoverable task state, safety, recovery,
 measurement, and capability integration. It does not become a generic workflow
 or RAG platform.
 
-## D9 — Strict file versions + atomic MultiEdit
+## D9 — File freshness + same-path write serialization
 
 **Why:** D8 can schedule a write worker, but exposing it is unsafe while a worker
-can act on stale file content or while two edits from one model response can
-partially apply. This is a demonstrated coding-agent correctness failure, not a
-speculative abstraction.
+can act on file content that changed after its own `Read`. This is a demonstrated
+coding-agent correctness failure, not a request for filesystem ACID semantics.
 
 **Do:**
 
-- Have bounded reads return a stable file-version token for the exact bytes the
-  model observed.
-- Require an expected version for edits to an existing file. A mismatch returns
-  a conflict and requires a fresh read; do not auto-rebase model edits.
-- Normalize all edits to one file from the same model response into one ordered,
-  validated transaction. Apply all or none through an atomic replace.
-- Cover delete/create/replace races, BOM and line-ending preservation, duplicate
-  matches, cancellation, and permission ordering.
-- Enable write-capable workers only after the stale-write and atomicity tests
-  pass.
+- Give each agent/worker scope a harness-internal content-hash observation store.
+  A bounded `Read` hashes the complete exact file bytes while returning only the
+  requested range.
+- Before `Edit` or complete replacement `Write` of an existing file, compare its
+  current hash with that agent's observation. A mismatch returns a recoverable
+  `Read again` result; do not auto-rebase or resolve the conflict.
+- After a successful write, advance only the executing agent's observation to
+  the bytes it wrote. Several same-file edits from one response therefore run in
+  emission order without redundant reads or a synthetic MultiEdit transaction.
+- Serialize Astra writes by canonical path across agent scopes. Do not retain the
+  D8 global worker-writer lane: workers touching different files may overlap.
+- Preserve the existing sibling-temp atomic replacement for each individual
+  write, while explicitly documenting that raw local files provide no CAS or
+  protection from an arbitrary external writer in the final check/write window.
+- Cover prior-read enforcement, unrelated content changes, bounded reads,
+  delete/create handling, BOM and line endings, cancellation, permission order,
+  read-only worker enforcement, and trusted changed-path reporting.
+- Expose write-capable workers only after those deterministic tests pass. Their
+  prompts should declare non-overlapping file ownership whenever possible.
 
 **Deliverable:** reproduce two edits derived from the same old `hello world`
-bytes, prove the second stale edit cannot silently apply, and prove a multi-edit
-batch leaves the original file unchanged if any member fails.
+bytes, prove the second agent is told to read once after the first writes, then
+show it recovering from the new content. Also show one agent performing ordered
+same-file edits without an unnecessary re-read.
 
-**Term:** *optimistic concurrency*, *version token*, *stale read*, *atomic
-transaction*, *conflict*, *no automatic rebase*.
+**Term:** *content observation*, *stale read*, *freshness guard*, *same-path
+serialization*, *atomic replace*, *no automatic rebase*.
 
 **Resource:** the existing D8 stale-write teaching note, Claude Code file-edit
-source, and the target OS atomic-replace contract.
+source, and the target OS atomic-replace boundary.
 
 ## D10 — Durable session log + crash-safe resume
 

@@ -103,15 +103,21 @@ gate.
 
 ## Open correctness boundary and next step
 
-Write-capable workers remain intentionally unavailable. A global writer lane
-prevents simultaneous writes but cannot prove that a worker reasoned from the
-current file version. D9 therefore implements strict file-version conflicts and
-atomic same-response MultiEdit:
+At the Phase I checkpoint, write-capable workers remained intentionally
+unavailable. A global writer lane prevented simultaneous writes but could not
+tell whether one worker's observation became stale after another worker wrote.
+D9 resolves that agent-level problem without claiming filesystem transactions:
 
-- no automatic rebase of stale model reasoning;
-- all eligible same-file edits in one response commit or fail together;
-- a later edit requires a new model-visible `Read`;
-- permission and file-version validation remain separate gates.
+- each agent scope retains a harness-internal hash of the latest bytes it read
+  or successfully wrote;
+- changed content returns a recoverable `Read again` result, with no automatic
+  rebase or conflict resolution;
+- same-canonical-path Astra writes serialize while different worker tasks may
+  overlap;
+- several edits by one agent run in emission order and advance that agent's
+  snapshot, without a synthetic MultiEdit transaction;
+- raw local paths retain an external-process race because atomic rename is not
+  a content-conditional commit.
 
 Phase I is complete. D9 begins only from this demonstrated stale-write failure,
 not from a generic workflow or interview feature list.
