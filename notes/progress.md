@@ -137,7 +137,7 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 | **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
 | **B** Pretrain+RLHF | same file | **B1 DONE (theory + working engine), as REVIEW/gap-fill.** Reverse-mode autodiff taught as 4 steps (forward builds graph / local derivative / chain rule / reverse-topo + accumulate) + the notation traps (`d` is the derivative operator not division; `de/da != e/a`; the two-equals-signs `dL/dd = f = 2.0` = rule-then-plug-in) + a 3rd op `tanh` (`do/dz = 1 - o^2`). `experiments/b01-micrograd/{micrograd.py (Value class + 4 demos, ALL PASS incl. a trained neuron loss 3.86->0.007), learning-notes.md (fact-based, mermaid graphs per step, activation-extended)}`. **B4 has a Segment-0 stub only** (`experiments/b04-attention/learning-notes.md` — the "attention is the only cross-token op" frame, not yet taught). | **B2 — makemore (scalar->tensor jump: embedding/softmax/cross-entropy).** OR resume B4 (attention) which is still the pulled-forward priority. Learner is doing Track B from the start as review; B1's engine is ready to be re-typed from memory (Karpathy "type don't paste") on the new machine. |
 | **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D8 DONE.** D1: loop. D2: behavioral tool contract. D3: stable-partition orchestration. D4: process-tree cancellation. D5: permission pipeline. D6: three-layer context assembly. D7: cache-aware compaction. Post-D7: Claude-compatible file tools + PowerShell. **D8: isolated DI-owned worker loops, bounded reports/trusted completions, parallel reads, targeted cancellation, one writer lane, escaped completion batching, and typed recoverable `ToolFailure`. Learner payoff: single agent 33,130 tokens/27.8s; multi-agent 88,778 tokens/41.0s = 2.68x tokens and 1.47x slower, despite 1.87x worker-phase overlap; two reports completed and no isolation marker leaked.** Phase D-I recap: `agent/experiments/track-d1-recap.md`. Astra `main@010e974` (PR #14 merged). | **D9 — strict file versions + atomic same-response MultiEdit.** Write-capable workers remain disabled until stale-read conflicts and all-or-nothing same-file edit transactions pass. |
+| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D8 DONE; D9 IMPLEMENTED + ASSISTANT-VERIFIED, LEARNER PAYOFF PENDING.** D1–D7: loop through compaction. D8: isolated DI-owned workers; learner measured 2.68x tokens, 1.47x slower end to end, and 1.87x worker-phase overlap on the narrow task. **D9: scoped SHA-256 file observations, recoverable `Read again` freshness checks, successful-write snapshot advancement, process-local same-path write gates, permission-classified write workers, read-only pre-activation enforcement, and trusted changed paths. No filesystem ACID/MultiEdit claim.** Verification: formatter clean, 136/136 tests, zero-warning Release build, Native AOT publish, deterministic demo. Astra `main@f98eb3c` (PR #15 merged). | **Run the D9 payoff personally:** `dotnet run --project agent/refs/Astra/samples/FileFreshnessDemo -c Release`; confirm stale worker recovery and same-agent sequential edits. Then mark D9 done and begin D10 durable session resume. |
 | **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
@@ -169,7 +169,7 @@ When the user is ready to continue, the natural next steps are:
 5. **Track D is split by ownership.** `agent/curriculum-agent.md` is now the
    D1–D20 Astra product track: a Manus-style general autonomous core whose coding
    specialization is measured against Claude Code/Codex. D1–D8 are done; D9
-   strict file versions and atomic same-response MultiEdit is next.
+   file freshness is assistant-verified and awaits the learner-run payoff.
    `agent/curriculum-agent-interview.md` separately covers intent routing,
    ReAct comparisons, generic workflows, production RAG, and interview mocks;
    those topics do not automatically enter Astra.
@@ -177,6 +177,63 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-09-17 — D9 merge synchronization
+
+- Astra PR #15 is squash-merged as `main@f98eb3c`. Its file tree matches the
+  verified PR head `2b0f565`, including the 136-test implementation and runnable
+  payoff. The local Astra checkout is back on `main`.
+- Updated parent PR #5 to pin the final Astra merge commit before merging the
+  parent update.
+- The learner-run D9 payoff remains pending; merging the implementation does
+  not imply that the learner has run the demo.
+
+### 2026-09-07 — D9 review fixes UTF-8 decoding and write-gate lifetime
+
+- Reproduced a BOM regression: `StreamReader` auto-detection replaced the strict
+  UTF-8 decoder and accepted invalid bytes as replacement characters. The reader
+  now strips the UTF-8 preamble without switching decoders.
+- Reproduced same-path writes blocking when an SDK consumer stopped on an
+  earlier write's final result. `Edit` and `Write` now release their path gate
+  before yielding that result; cancellation and freshness behavior are retained.
+- Added four focused regression cases. Formatter, 136/136 Release tests, and
+  zero-warning solution build pass. The payoff demo now asserts its file
+  contents and stale result before printing `PASS` and passes from the parent
+  repository root. Windows Native AOT publish also passes.
+- Corrected the source note: Claude Code's explicit bounded reads are distinct
+  from the `isPartialView` flag used for transformed auto-injected content.
+- D9 remains learner-payoff pending; the implementation can be reviewed before
+  that learning milestone is marked complete.
+- Astra draft PR #15 contains the implementation at `2b0f565`; this parent
+  update pins that published commit and carries the revised D9 curriculum and
+  source/teaching notes.
+
+### 2026-09-04 — D9 file freshness implemented without filesystem-transaction claims
+
+- Corrected the original D9 design after the learner identified that sibling-temp
+  rename plus a process-local lock cannot provide ACID, CAS, or isolation from an
+  arbitrary external writer. The actual agent requirement is simpler: use the
+  latest observed content, and perform one new `Read` when that content changes.
+- Added one scoped SHA-256 observation store per agent/worker. Bounded `Read`
+  hashes complete exact bytes; existing-file `Edit`/`Write` compares current
+  content, returns a recoverable `Read again` result on mismatch, and advances
+  only the executing agent's observation after success.
+- Replaced D8's global worker-writer lane with a canonical-path file gate.
+  Same-file Astra writers serialize across scopes while unrelated write workers
+  can overlap. Multiple edits from one agent remain ordinary serial calls; no
+  synthetic MultiEdit transaction or rollback is added.
+- Exposed `Agent(access_mode="write")` as a Write-class permission request.
+  Read-only remains the default and is enforced before executor activation.
+  Worker completions report canonical changed paths from trusted scoped state.
+- Added `samples/FileFreshnessDemo`. The assistant run showed A writing `H1`, B
+  being told to read after its stale `H0`, B recovering after one read, and one
+  agent performing two ordered edits without a redundant read.
+- Verification: formatter clean, 132/132 tests, zero-warning Release build, and
+  Native AOT publish successful. A real local `gpt-5.6-sol` run also exercised
+  `Agent(access_mode="write")`: the outer Write permission appeared, the worker
+  created its exclusively assigned file, completion returned, and byte-level
+  verification found exactly `WORKER_WRITE_OK` (15 UTF-8 bytes). D9 remains
+  learner-payoff pending.
 
 ### 2026-09-03 — Track D Phase I complete after learner-run D8 payoff
 

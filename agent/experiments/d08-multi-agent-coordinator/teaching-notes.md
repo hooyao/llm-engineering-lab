@@ -28,7 +28,7 @@ Claude Code handles this at several independent layers:
 1. The coordinator schedules write-heavy workers one at a time for overlapping
    file sets. This prevents the common conflict before execution.
 2. `readFileState` records the content and modification timestamp observed by a
-   worker's prior full `Read`.
+   worker's prior `Read`, including its requested range.
 3. `Edit` reads the current file again immediately before writing. If the file
    changed since that worker's read snapshot, it returns
    `FILE_UNEXPECTEDLY_MODIFIED_ERROR` without writing.
@@ -48,64 +48,62 @@ that the worker reasoned from the current file version. A worker permission
 request can be approved and still fail the subsequent version or exact-match
 precondition safely.
 
-## Astra D8 implication
+## Astra D9 implication
 
-Multiple worker loops will need one shared, per-path write coordinator. A safe
-write sequence is:
+Multiple worker loops need one shared, per-path write coordinator. The selected
+freshness sequence is:
 
 ```text
 acquire path lock
 read current bytes
-compare with the worker's observed version
+compare their hash with this worker's last observation
+if different: invalidate the observation and return "Read again"
 apply the exact edit
 atomically replace the file
-record the new version
+advance this worker's observation to the written bytes
 release path lock
 ```
 
-A content hash can represent the observed version, but the compare and write
-must occur under the same path lock; otherwise a time-of-check/time-of-use race
-remains. The version should be harness-internal rather than another value the
-LLM must copy through `Edit` arguments.
+A content hash represents the observation and remains harness-internal rather
+than becoming another value the model must copy through `Edit` arguments.
+Each worker has an independent observation store, so A's successful write does
+not silently advance B's old observation.
 
-### Chosen v1 conflict policy
+The path lock is process-local. It orders Astra file tools but cannot control an
+IDE, linter, shell, or arbitrary external process. Atomic rename prevents one
+individual write from exposing partial bytes; it is not a conditional commit or
+filesystem transaction. Astra makes no ACID or CAS claim for a raw local path.
 
-The learner chose strict conflict semantics. Any file-version change since the
-worker's observation rejects the proposed write, even when its `old_string`
-still exists uniquely in the current file. Astra will not automatically rebase
-an edit because textual applicability does not prove that reasoning performed
-against the old version remains valid. Recovery requires a new `Read`, a new
-model decision, and a new write attempt.
+### Chosen freshness policy
+
+A content change since the worker's observation rejects the proposed write even
+when its `old_string` still exists uniquely. Astra does not resolve or rebase the
+proposal. The tool returns a recoverable changed-file result; the worker performs
+one new `Read` and makes its next decision from those bytes. A metadata-only
+change with identical content does not force a read.
+
+After a successful write, the executing worker's observation advances to the
+exact bytes it wrote. This matches the practical agent requirement: the worker
+does not reread content it just produced, while every other worker retains its
+own potentially stale hash.
 
 ### Chosen same-file edit policy
 
-The coordinator should instruct the model to combine multiple changes to one
-file into one edit operation whenever possible. Prompting is an optimization,
-not a correctness boundary: the harness must still handle a response that
-contains multiple same-file edit calls.
+The public `Edit` contract remains one `old_string` / `new_string` pair. Several
+calls run serially in model emission order. Each successful call advances the
+same worker's observation, so a later call may intentionally target text created
+by an earlier call. Astra adds no synthetic MultiEdit transaction and no rollback.
+If an exact match is missing or ambiguous, that call fails and the model receives
+the result on its next round.
 
-Claude Code's public `Edit` schema carries one `old_string` / `new_string` pair,
-while its internal `getPatchForEdits` utility already operates on an edit list.
-Astra can preserve the familiar external contract and normalize eligible calls
-from one assistant response into one internal file-edit transaction. The
-transaction uses one observed version, validates every replacement, requests
-permission once, and performs one all-or-nothing atomic write. It still emits a
-result for every original tool call ID.
+Different worker sessions may run concurrently. Same-canonical-path writes wait
+on the shared file gate; different paths do not use a global writer lane.
+Coordinator prompts should still assign non-overlapping file ownership whenever
+possible because avoiding contention is cheaper than recovering from it.
 
-After that transaction commits, a later edit operation for the same file must
-perform a new `Read`. Astra does not silently treat the writer's post-write
-state as a model observation: seeing a successful tool result is not equivalent
-to inspecting the resulting file content.
-
-Only adjacent same-file edits from the same assistant response are candidates
-for normalization. Astra must not merge across a read/tool barrier, across
-assistant responses, or across different paths because those boundaries may
-carry ordering dependencies.
-
-Required D8 conflict test: two workers start from the same observed version and
-submit contradictory edits to one file. Exactly one edit may succeed; the other
-must return a typed stale-version or exact-match conflict, and the winner's
-content must remain intact.
+Required D9 regression: two workers start from `H0`; A writes `H1`; B receives
+`Read again`, observes `H1`, and can then make a new edit. A separate regression
+proves several ordered edits from one worker can proceed without redundant reads.
 
 ## Worker result boundary
 
