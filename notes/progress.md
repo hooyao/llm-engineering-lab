@@ -132,13 +132,25 @@ Keep these as fallback / reproducibility, but prefer the 26.04 variants for new 
 > snapshot above is what *exists*; this is how far the *learning* has gone.
 > Update the "next" column whenever a day is finished.
 
-| Track | What | Done so far | Next concrete step |
+Last reconciled **2026-10-29** against committed artifacts and the log. This is a
+record of available evidence, not a new verification of GX10 accessibility. A day
+is complete only when its learner-visible payoff has also been experienced; a
+prepared plan, an assistant-run demo, or a results file alone does not establish
+that. "No completion recorded" means no evidence was found here, not proof that
+the learner has never studied the topic.
+
+| Track | Completed | In progress / evidence | Next step |
 |---|---|---|---|
-| **A** Fine-tuning | `notes/curriculum-v2-execution.md` | **A1–A5 done + A6 THEORY DONE (all 3 hyperparameters + prediction table), A7 THEORY STARTED (QLoRA core concepts covered), GX10 sweeps pending.** A1: `budget.py` + concept notes. A2: first full-param SFT (Llama-3.2-1B, peak 13.84 GB → corrected A1 to 12 B/param) **+ `experiments/a02-sft-1b/learning-notes.md` (Seg 1–6e + learner diagnostic — READ IT before teaching)**. A3: `experiments/a03-eval-1b/results.md` learner's own before/after. **A4: gradient accumulation — explicit hand-written loop (A2's `trainer.train()` debt PAID), 3-config sweep; learner caught non-monotonic step_time. `a04-grad-accum/learning-notes.md` (Seg 0–6).** **A5: activation checkpointing × seq_len, 8-config sweep on 3B+LoRA; learner derived the whole time-for-space trade + the algebra `save%=k/(F/(c·seq_len)+1)`, both predictions verified on metal. `a05-ckpt-seqlen/learning-notes.md` (Seg 0–5).** **A6 THEORY COMPLETE (offline, GX10 unreachable): all 3 hyperparameters taught (rank r / alpha / target modules), W-shape `[d_out,d_in]`, transformer = stack of 7 W/layer, area-vs-perimeter; learner hand-derived the per-layer param formula. Files: `a06-lora-sweep/{learning-notes.md (Seg 0–7), teaching-notes.md (clean review), predictions.md}`.** | **A6 — run the 4-config sweep on GX10**, then **A7 — implement/run QLoRA 8B**. A6: fill the MEASURED column in `predictions.md` (params, adapter size, final loss, gen). A7: use `experiments/a07-qlora-8b/theory-notes.md` and compare peak memory/final loss against A6. |
-| **B** Pretrain+RLHF | same file | **B1 DONE (theory + working engine), as REVIEW/gap-fill.** Reverse-mode autodiff taught as 4 steps (forward builds graph / local derivative / chain rule / reverse-topo + accumulate) + the notation traps (`d` is the derivative operator not division; `de/da != e/a`; the two-equals-signs `dL/dd = f = 2.0` = rule-then-plug-in) + a 3rd op `tanh` (`do/dz = 1 - o^2`). `experiments/b01-micrograd/{micrograd.py (Value class + 4 demos, ALL PASS incl. a trained neuron loss 3.86->0.007), learning-notes.md (fact-based, mermaid graphs per step, activation-extended)}`. **B4 has a Segment-0 stub only** (`experiments/b04-attention/learning-notes.md` — the "attention is the only cross-token op" frame, not yet taught). | **B2 — makemore (scalar->tensor jump: embedding/softmax/cross-entropy).** OR resume B4 (attention) which is still the pulled-forward priority. Learner is doing Track B from the start as review; B1's engine is ready to be re-typed from memory (Karpathy "type don't paste") on the new machine. |
-| **C** Math | same file | none (reading Parr & Howard in parallel) | C1 — derivatives review |
-| **D** Agent eng | `agent/curriculum-agent.md` | **D1–D8 DONE; D9 IMPLEMENTED + ASSISTANT-VERIFIED, LEARNER PAYOFF PENDING.** D1–D7: loop through compaction. D8: isolated DI-owned workers; learner measured 2.68x tokens, 1.47x slower end to end, and 1.87x worker-phase overlap on the narrow task. **D9: scoped SHA-256 file observations, recoverable `Read again` freshness checks, successful-write snapshot advancement, process-local same-path write gates, permission-classified write workers, read-only pre-activation enforcement, and trusted changed paths. No filesystem ACID/MultiEdit claim.** Verification: formatter clean, 136/136 tests, zero-warning Release build, Native AOT publish, deterministic demo. Astra `main@f98eb3c` (PR #15 merged). | **Run the D9 payoff personally:** `dotnet run --project agent/refs/Astra/samples/FileFreshnessDemo -c Release`; confirm stale worker recovery and same-agent sequential edits. Then mark D9 done and begin D10 durable session resume. |
-| **Career** | `notes/career-transition-research.md` | research complete (4 reports) | Phase 0 — build portfolio, contact CPH/Dublin HMs |
+| **A — Fine-tuning** | **A1–A5**: memory budgeting, full SFT, learner-reviewed before/after generation, gradient accumulation, and activation checkpointing. See the [A2 learning notes](../experiments/a02-sft-1b/learning-notes.md), including the learner diagnostic, and [A3 results](../experiments/a03-eval-1b/results.md). | **A6:** theory complete; the [prediction table](../experiments/a06-lora-sweep/predictions.md) reports a four-config GX10 sweep on 2026-07-01, committed in `1935c3a`. The existing log does not confirm the learner reviewed its results, and raw run outputs are not in the repo. **A7:** QLoRA theory started; no implementation or run recorded. **A0:** crash-course completion not recorded. No completion recorded for A8, A9, A9.5, or A10. | Review the recorded A6 results with the learner and establish whether the payoff was experienced; verify or rerun only if needed. Then implement and run A7, comparing it with the recorded A6 baseline. See [GX10 queue](gx10-task-list.md). |
+| **B — Pretraining + RLHF** | **B1:** reverse-mode autodiff and a working scalar engine; its trained-neuron demo was the learner-visible payoff. See [B1 notes](../experiments/b01-micrograd/learning-notes.md) and [engine](../experiments/b01-micrograd/micrograd.py). | **B4:** only a Segment-0 stub, not yet taught; see [attention notes](../experiments/b04-attention/learning-notes.md). No completion recorded for B2–B16. | Continue **B2** sequentially or pull **B4** forward for the transformer-foundation gap, as the learner chooses. B1 may also be retyped from memory for practice. |
+| **C — Math** | No day complete. | Parr & Howard reading is in parallel. C1 has a prepared [plan and checker](../experiments/c01-scalar-derivatives/README.md), not a recorded completed lesson. | Start **C1** as a retention-oriented foundation rebuild: short reading/video segments, worked examples, verification, and spaced retrieval before closed-book questions. Extend this pacing through C1–C3. |
+| **D — Astra product** | **D1–D8**, including the learner's D8 run: 2.68x tokens and 1.47x wall time versus the single-agent baseline on that narrow task; workers overlapped. See [D8 results](../agent/experiments/d08-multi-agent-coordinator/results.md). | **D9:** implemented and assistant-verified in Astra `main@f98eb3c`; the learner-run payoff is pending. **D10:** design discussion started; no runtime implementation or payoff yet. See [D9](../agent/experiments/d09-file-freshness/README.md) and [D10](../agent/experiments/d10-session-resume/README.md). No completion recorded for D11–D20. | Run and discuss the D9 payoff: `dotnet run --project agent/refs/Astra/samples/FileFreshnessDemo -c Release`. Continue D10's durable-resume design from its notes; D9's pending payoff remains a separate requirement. |
+| **I — Applied agent interview labs** | No lab completion recorded. | I1–I8 are a separate interview curriculum, not Astra's product backlog; no per-lab deliverables are recorded. | Start [I1](../agent/curriculum-agent-interview.md) when interview practice is selected. |
+| **Career** | Four research reports consolidated in [career research](career-transition-research.md). | Phase 0 portfolio and outreach are next; outreach completion is not recorded. | Build the portfolio and pursue Copenhagen/Dublin hiring-manager contacts when ready. |
+
+Detailed day plans: [Tracks A/B/C](curriculum-v2-execution.md),
+[Track D](../agent/curriculum-agent.md), and
+[interview labs I1–I8](../agent/curriculum-agent-interview.md).
 
 **For Track D specifically:** the next-step state above only tracks *which day*.
 Once building starts, the agent-core implementation state lives in the **Astra
@@ -151,9 +163,10 @@ writing Astra code so you don't re-do or contradict prior work there.
 
 When the user is ready to continue, the natural next steps are:
 
-1. **GX10 task queue**: GX10 is currently unreachable from this machine. When a GX10-reachable
-   machine is available, use `notes/gx10-task-list.md` as the central run queue. P0 is A6
-   LoRA sweep, then A7 QLoRA 8B.
+1. **GX10 task queue**: the last recorded connection state was unreachable from the
+   then-current machine; connectivity has not been rechecked in this reconciliation.
+   Use `notes/gx10-task-list.md` for the queue. A6 has reported sweep results to review;
+   A7 QLoRA 8B still needs implementation and a run.
 2. The `experiments/smoke-test/` script has been verified to run end-to-end (5 steps
    of LoRA-3B succeeded). The user has NOT yet executed the full 200-step run.
    If they ask "did we finish the smoke test?" the answer is "the pipeline is
@@ -169,7 +182,8 @@ When the user is ready to continue, the natural next steps are:
 5. **Track D is split by ownership.** `agent/curriculum-agent.md` is now the
    D1–D20 Astra product track: a Manus-style general autonomous core whose coding
    specialization is measured against Claude Code/Codex. D1–D8 are done; D9
-   file freshness is assistant-verified and awaits the learner-run payoff.
+   file freshness is assistant-verified and awaits the learner-run payoff; D10
+   design discussion has started but implementation has not.
    `agent/curriculum-agent-interview.md` separately covers intent routing,
    ReAct comparisons, generic workflows, production RAG, and interview mocks;
    those topics do not automatically enter Astra.
@@ -177,6 +191,35 @@ When the user is ready to continue, the natural next steps are:
 ---
 
 ## LOG (append new entries at the top)
+
+### 2026-10-29 — Reconciled learning state across all tracks
+
+- Cross-checked the track snapshot against curricula, per-day artifacts, the
+  existing log, Astra's checked-out revision, and commit `1935c3a`.
+- A6's results note reports a 2026-07-01 four-config GX10 sweep, despite the old
+  snapshot and queue saying the sweep was pending. Raw run outputs and explicit
+  confirmation that the learner experienced the payoff are not present in the
+  repo; keep A6 open for review rather than silently marking it complete or
+  demanding an unconditional rerun. A7 remains theory-only.
+- Added the separate interview labs, clarified that C1 is prepared but not
+  complete, and synchronized D10's started design with D9's pending payoff.
+- Updated the GX10 queue and A6 notes to distinguish recorded results, historical
+  predictions, and the remaining learner review. No experiment was run and GX10
+  connectivity was not checked during this reconciliation.
+
+### 2026-09-17 — D10 session-resume design discussion started
+
+- The learner confirmed file-content recovery based on the last observed hash:
+  matching current content permits the pending file operation to proceed;
+  changed content requires a new Read and model decision, without inferring
+  who changed it or whether the interrupted call completed.
+- Persist the agent-owned observation and pending call before execution;
+  restore recorded terminal outcomes without re-executing their calls. This
+  is not a generic retry rule for PowerShell or external side effects.
+- Inspected Astra's current event/message and file-observation boundaries.
+  `agent/experiments/d10-session-resume/teaching-notes.md` records the agreed
+  rule and the proposed distinction between UI events and durable state.
+- D10 implementation has not started. D9 remains learner-payoff pending.
 
 ### 2026-09-17 — D9 merge synchronization
 

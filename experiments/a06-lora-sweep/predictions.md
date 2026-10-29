@@ -1,11 +1,11 @@
-# A6 — prediction table (derived offline; MEASURED column waits for GX10)
+# A6 — predictions and reported GX10 sweep results
 
-> Built tonight (2026-06-25) with the learner, fully offline (GX10 unreachable this
-> session). The **trainable-params** column is pure arithmetic → **certain**. The
-> **adapter-on-disk** column is a **prediction** that depends on the dtype PEFT serializes
-> the adapter in — to be reverse-engineered from the measured file size on the box,
-> exactly like A2 reverse-engineered `12 B/param` from the measured peak. Fill the
-> MEASURED columns when the sweep runs (Task #3).
+> Predictions were derived with the learner offline on 2026-06-25. The tables
+> below report a four-config GX10 run on 2026-07-01, added in commit `1935c3a`.
+> Raw run outputs are not present in the repository, and the log does not confirm
+> that the learner reviewed the payoff. Review the recorded results before marking
+> A6 complete or deciding whether a rerun is needed. The run used about 484 samples,
+> rather than the approximately 5000 in the original plan.
 
 ## The 4 configs (only `r` and target modules vary; α/r held = 2)
 
@@ -159,54 +159,42 @@ config          params    peak_mem   final_loss   step_ms   adapter (fp32)
 
 Reading this column (nothing here was pre-derivable — this is the genuinely new data):
 
-1. **More capacity did NOT monotonically lower loss.** ①→②→③ nudges down
-   (0.9120 → 0.9084 → 0.9018 — a 0.011 total drop, tiny), then ④ (r=64) **rises** to 0.9697.
-   The best final loss is ③, not the biggest ④. Two forces: (a) on ~484 samples / 120 steps
-   there is very little to learn, so extra adapter capacity buys almost nothing; (b) r=64
-   is 168M trainable params on a tiny dataset — it overfits / trains less stably at the same
-   lr, so its *training* loss at step 120 is actually worse. This is exactly the
-   underfit↔overfit trade the A6 plan said the sweep would expose (learning-notes Seg 2).
-   Caveat: this is **train** loss on a tiny run, not a held-out eval — don't over-read the
-   0.011 spread among ①②③; the honest signal is "capacity past ~r16+mlp did not help here,
-   and r64 clearly hurt stability."
+1. **More capacity did not monotonically lower final training loss in this run.**
+   ①→②→③ decreases from 0.9120 to 0.9018, then ④ rises to 0.9697. These are
+   training losses from a small run, not held-out evaluation results. The table
+   alone does not establish overfitting, instability, or why the last loss rose.
 
-2. **peak_mem barely moves with adapter size, jumps with target coverage.** ①→② adds 6.8M
-   params but peak is flat (49.24 → 49.34 GB): the LoRA state is a rounding error against the
-   ~16 GB frozen base + activations. ②→③ jumps +11 GB (49.34 → 60.67) — NOT from the adapter
-   (0.1 GB) but because **adapting mlp means the mlp activations now need grad**, so the
-   backward graph retains far more activation memory. ③→④ adds another 126M params but only
-   +1.8 GB (60.67 → 62.48). Lesson: **which modules you adapt drives memory (via activations),
-   the rank barely does.** Same shape as A5's activation story.
+2. **Peak memory changed more with target coverage in these comparisons.** ①→②
+   adds 6.8M trainable params and rises from 49.24 to 49.34 GB; ②→③ adds MLP
+   targets and rises to 60.67 GB; ③→④ increases rank and rises to 62.48 GB.
+   Differences in retained activations are a plausible contributor, but these
+   aggregate peaks alone do not measure each allocation or prove the cause.
 
 3. **step_ms tracks the same split:** attn-only ~3.6 s, attn+mlp ~5.0 s — adapting the wide
    mlp matrices adds compute per step; rank (③→④) adds almost none.
 
 ## Qualitative gen (same 3 prompts, greedy, all 4 configs)
 
-The point of the gen check: **general SFT on tulu-3 changes nothing factual, and this
-prompt set can't distinguish the 4 configs** — expected, and itself the lesson.
+The recorded generations on these three prompts provide only a small qualitative
+comparison; they cannot establish factual knowledge or general model quality.
 
 - **"Explain LoRA to a systems engineer"** — all 4 answer "LoRA = Long Range (radio), an
   IoT wireless tech." The base model's world-knowledge meaning of the token "LoRA"; tulu-3
   is generic instruction data and never teaches the ML meaning, so no config learns it.
-  A clean demonstration of A6 Seg-0: LoRA fits *style/format*, it does not *install facts*.
-- **"Capital of France"** — all 4 say Paris (byte-similar). Knowledge unchanged by SFT, same
-  as A3's finding on the 1B.
+  This prompt and dataset do not establish a general limit on what LoRA can learn.
+- **"Capital of France"** — all 4 say Paris (byte-similar). This single answer
+  does not measure changes in knowledge generally.
 - **"nth Fibonacci"** — ①②③ emit a bare `def fibonacci(n):` stub; ④ (r=64) preambles with
   "Here is a Python function that returns...". The only visible cross-config difference, and
   it's a formatting nuance, not a capability gap.
 
-Conclusion the learner reads: on this small generic-SFT run the four adapters are
-behaviorally near-identical; the sweep's real payoff is the **params/memory/loss structure**
-above (formula PASS ×4, dtype = fp32, memory driven by target-modules not rank, capacity
-past r16+mlp stops helping), not a dramatic generation diff. To *see* a behavioral gap you'd
-need task-specific data where the adapted capability is actually exercised (a Track-A8/A10
-follow-up), not a 3-prompt smoke set.
+On these three prompts, the reported generations show few differences. They do
+not establish general behavioral equivalence or quality. Review them alongside
+the parameter, size, memory, and training-loss comparisons above.
 
 ## Which config would ship
 
-**③ r16 / attn+mlp.** Best final loss (0.9018), adapting mlp (the memory/quality lever that
-matters), adapter only 160 MiB, peak 60.7 GB (comfortable on the 128 GB unified pool). ④'s
-4× params bought worse loss and more memory — no reason to pay it here. ①/② (attn-only) leave
-the mlp frozen, which caps how much the adapter can re-express. So: **rank 16 is enough,
-adapting mlp is worth the +11 GB, rank 64 is over-provisioning for a dataset this size.**
+**③ r16 / attn+mlp is a candidate for comparison**, with the lowest recorded
+final training loss (0.9018), a 160 MiB adapter, and 60.67 GB peak memory. That
+single run and three prompts do not establish that it is the best production
+configuration or that the extra memory improves held-out quality.

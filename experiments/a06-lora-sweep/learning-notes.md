@@ -1,13 +1,11 @@
-# A6 — learning notes (LoRA: rank / alpha / target modules) — THEORY DONE, sweep pending
+# A6 — learning notes (LoRA: rank / alpha / target modules)
 
-> Same per-learner format as A2/A4/A5. **STATUS (2026-06-25): all three hyperparameters
-> taught (rank, alpha, target modules) AND the full prediction table hand-derived offline.
-> The only thing LEFT is running the 4-config sweep on GX10 to fill the MEASURED column.**
-> GX10 was unreachable this session, so by the learner's call we finished 100% of the
-> theory offline first; the metal run is a separate machine + a later session (Task #3).
-> A new session continuing A6 should: read this file, then `predictions.md` (the table to
-> verify), then `notes/curriculum-v2-execution.md` § A6 for the sweep spec. The learner
-> already USED LoRA all through A5 (3B + LoRA r=16); A6 opened it up.
+> All three hyperparameters were taught and the predictions derived offline on
+> 2026-06-25. `predictions.md` now reports a later four-config GX10 sweep; raw
+> outputs and confirmation of learner review are not recorded in this repo.
+> Continue by reading this file, then review the reported results with the learner.
+> Mark A6 complete only after the learner-visible payoff is confirmed. The learner
+> already used LoRA throughout A5 (3B + LoRA r=16); A6 opened it up.
 >
 > Pacing rule for this learner (proven A2→A5): one small segment, let them clarify in
 > place, fold Q&A back, anchor in linear-regression / systems trade-offs, state
@@ -21,7 +19,7 @@
 LoRA's two hyperparameters — **rank `r`** (how much capacity the update has) and **alpha `α`**
 (how strongly the update is applied) — plus **target modules** (which weight matrices
 get an adapter). All three now taught + the prediction table hand-derived. The sweep
-(r=8/16/64, attn-only vs attn+mlp) is the pending metal run (`predictions.md` Task #3).
+(r=8/16/64, attn-only vs attn+mlp) has reported results in `predictions.md`.
 
 ---
 
@@ -283,32 +281,22 @@ prediction in `predictions.md`):
 ③→④ r×4  → ×4.00   (r linear again)
 ```
 
-**The adapter-dtype bet (resolve on GX10, A2-style).** adapter MB = params × bytes/param.
+**The adapter-dtype bet (historical predictions).** adapter MB = params × bytes/param.
 - Learner bet **fp32**: few hundred MB so no pressure to save, and "fp32 carries more info."
 - Tutor bet **bf16**: A/B are *weights* (same class as base W); base is bf16, so at
   inference `(α/r)·B·A·x` adds onto a bf16 `W·x` and any fp32 precision is truncated on that
   add — unusable. Real driver = dtype-alignment with base, not space. Likely bf16 default.
-- The learner's "space doesn't matter" reasoning is CORRECT; it just doesn't decide the
-  dtype (alignment does). Open because PEFT's default is version-dependent — must not be
-  quoted from memory; the measured file size on the box decides. Both predictions in
-  `predictions.md`, MEASURED column waits for Task #3.
+- The later recorded file sizes support fp32 serialization for all four configs.
+  The original bf16 inference-alignment argument did not establish the training
+  tensor or serialization dtype. See `predictions.md` for the recorded comparison.
 
 ---
 
-## What's LEFT for A6 (the unfinished payoff — do this next session)
+## What's left for A6
 
-Per `notes/curriculum-v2-execution.md` § A6: an 8B base, `tulu-3-sft-mixture` ~5000
-samples, **4 configs**:
-- r=8,  α=16, attn-only
-- r=16, α=32, attn-only
-- r=16, α=32, attn+mlp
-- r=64, α=128, attn+mlp
-For each: trainable params, adapter checkpoint size on disk, final loss, qualitative gen
-on ~5 prompts. **Deliverable + payoff:** a table comparing the 4, and "which would you
-ship and why." The payoff form is co-designed with the learner ON THE DAY (per CLAUDE.md)
-— likely "see adapter size + gen quality move as r/targets change," shown as something the
-learner reads themselves. Knob 3 (**target modules**: attn-only vs attn+mlp) gets taught
-during the sweep — it's the third axis, not yet covered.
-
-Note: A6 spec says 8B; the box has Llama-3.1-8B-Instruct and Qwen3-8B. Confirm dataset
-`tulu-3-sft-mixture` availability on the box (may need download) before the run.
+Review the four configurations and the recorded trainable-parameter, adapter-size,
+peak-memory, training-loss, and three-prompt generation comparisons in
+`predictions.md` with the learner. Discuss the candidate configuration and the
+limits of a small training run. The original plan specified about 5000 samples;
+the recorded run reports about 484. Confirm the learner-visible payoff before
+marking the day complete; verify or rerun only if needed.

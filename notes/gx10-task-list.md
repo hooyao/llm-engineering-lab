@@ -4,8 +4,8 @@
 > Keep this file short and executable. Detailed learning history stays in
 > `notes/progress.md`; detailed hardware facts stay in `notes/hardware-gx10.md`.
 >
-> Current blocker: this Windows machine cannot reach GX10. Resume this list from a
-> GX10-reachable machine.
+> The last recorded connection state was that the then-current machine could not
+> reach GX10. Connectivity was not rechecked during the 2026-10-29 reconciliation.
 
 ## Connection / environment assumptions
 
@@ -19,10 +19,13 @@
 
 ## P0 — Resume Track A blocked metal runs
 
-### 1. A6 LoRA 4-config sweep
+### 1. A6 LoRA 4-config sweep — results recorded; learner review unconfirmed
 
-**Why:** Finish A6's prediction-vs-measured payoff. Theory is complete; only the GX10 sweep
-is missing.
+**Status:** `experiments/a06-lora-sweep/predictions.md` reports results for all four
+configs from 2026-07-01; commit `1935c3a` added those results and the run scripts.
+The repository does not contain raw run outputs or confirmation that the learner
+experienced the payoff. Review the existing table with the learner before deciding
+whether any verification or rerun is necessary. A6 is not yet recorded as complete.
 
 **Inputs / references:**
 
@@ -31,12 +34,10 @@ is missing.
 - `experiments/a06-lora-sweep/teaching-notes.md`
 - `notes/curriculum-v2-execution.md` § A6
 
-**Run shape:**
-
-- Base: Llama-3.1-8B-Instruct or Qwen3-8B, whichever is the cleaner local path.
-- Dataset: `allenai/tulu-3-sft-mixture`, about 5000 samples. Confirm availability on box;
-  download if absent.
-- Four configs, all with `alpha/r = 2`:
+**Recorded run:** Llama-3.1-8B-Instruct, approximately 484 samples, batch 4,
+seq_len 1024, 120 optimizer steps per config, with no activation checkpointing.
+The original plan called for approximately 5000 samples; the recorded run used
+fewer. The four recorded configurations held `alpha/r = 2`:
 
 ```text
 r=8,  alpha=16,  attn-only   (q,k,v,o)
@@ -45,21 +46,21 @@ r=16, alpha=32,  attn+mlp    (q,k,v,o + gate,up,down)
 r=64, alpha=128, attn+mlp
 ```
 
-**Record:**
+**Review:**
 
 - Printed trainable params; compare to predicted `6.82M / 13.63M / 41.94M / 167.77M`.
 - `adapter_model.safetensors` byte size; divide by trainable params to infer fp32 vs bf16
   serialization.
 - Peak memory.
 - Final loss.
-- Qualitative generation on about 5 prompts.
+- Qualitative generation on the three prompts reported in the results note.
 - Which config would be shipped and why.
 
-**Write results to:**
+**If verification or a rerun is needed:**
 
-- Fill the MEASURED columns in `experiments/a06-lora-sweep/predictions.md`.
-- Add/extend a results note under `experiments/a06-lora-sweep/`.
-- Append `notes/progress.md` log entry.
+- Preserve the existing reported results and record the new run conditions and
+  outputs separately in `experiments/a06-lora-sweep/`.
+- Append the outcome and learner payoff to `notes/progress.md`.
 
 ### 2. A7 QLoRA 8B run
 
@@ -69,7 +70,8 @@ r=64, alpha=128, attn+mlp
 
 - `experiments/a07-qlora-8b/theory-notes.md`
 - `notes/curriculum-v2-execution.md` § A7
-- Best A6 config once A6 sweep is complete.
+- The recorded A6 candidate `r=16, attn+mlp`; review its limited training-loss
+  evidence with the learner before treating it as the preferred baseline.
 
 **Implementation:**
 
